@@ -1,0 +1,403 @@
+---
+title: "04a_fig2"
+author: "Yongxuan Guo"
+date: "2022/6/4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# fig2. Global WUI distribution in 2020, zomm in
+
+## set work directory and load packages
+```{r}
+library(raster)
+library(sf)
+library(foreach)
+library(doParallel)
+library(sp)
+library(rasterVis)
+library(RColorBrewer)
+library(dplyr)
+library(scales)
+library(ggplot2)
+library(ggsci)
+library(patchwork)
+library(ggnewscale)
+library(ggrepel)
+raster::rasterOptions(tmpdir = '/project/public/')
+
+idir <- "/GlobalWUI/"
+type <- 'WUI'
+wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+```
+
+## read 1km WUI
+```{r}
+wd <- paste0(idir, 'Data/')
+files <- dir(path = wd, pattern = glob2rx('*rmNA_*.tif'))
+rList <- NULL
+WUI_area <- NULL
+for(i in 1:length(files)){
+  rList[[i]] <- raster(paste0(wd, files[i]))
+}
+crs <- crs(rList[[3]])
+```
+
+## draw 2020's WUI
+### marginal plot
+```{r}
+# 2000
+# aggregate to 0.1°
+w2000 <- aggregate(rList[[1]], fact=c(100,100)) %>% 
+  projectRaster(res = c(1,1), crs = crs)
+# calculate WUI area for each pixel
+w2000_area <- raster::area(w2000) * w2000
+df_area <- as.data.frame(w2000_area, xy = T)
+# Sum WUI area by longitude
+bylon_00 <- df_area %>%
+  group_by(x) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(x = x,
+         year = '2000')
+# Sum WUI area by latitude
+bylat_00 <- df_area %>%
+  group_by(y) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(y = y,
+         year = '2000')
+
+# 2010
+# aggregate to 0.1°
+w2010 <- aggregate(rList[[2]], fact=c(100,100)) %>% 
+  projectRaster(res = c(1,1), crs = crs)
+w2010_area <- raster::area(w2010) * w2010
+df_area <- as.data.frame(w2010_area, xy = T)
+bylon_10 <- df_area %>%
+  group_by(x) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(x = x,
+         year = '2010')
+bylat_10 <- df_area %>%
+  group_by(y) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(y = y,
+         year = '2010')
+
+# 2020
+# aggregate to 0.1°
+w2020 <- aggregate(rList[[3]], fact=c(100,100)) %>% 
+  projectRaster(res = c(1,1), crs = crs)
+w2020_area <- raster::area(w2020) * w2020
+df_area <- as.data.frame(w2020_area, xy = T)
+bylon_20 <- df_area %>%
+  group_by(x) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(x = x,
+         year = '2020')
+bylat_20 <- df_area %>%
+  group_by(y) %>%
+  summarise(area = sum(layer, na.rm = T)) %>% 
+  mutate(y = y,
+         year = '2020')
+
+# combine data
+bylon <- bind_rows(bylon_00, bylon_10, bylon_20)
+bylat <- bind_rows(bylat_00, bylat_10, bylat_20)
+bylon$year <- factor(bylon$year, levels = c('2020', '2010', '2000'))
+bylat$year <- factor(bylat$year, levels = c('2020', '2010', '2000'))
+
+# set color palette for marginal plots
+pal <- c('2000'='#31a354', '2010'='#9522AE', '2020'='#f03b20')
+
+# longitude marginal plot at 0.1°
+p1 <- ggplot(data = bylon, mapping = aes(x = x, group = year)) + 
+    geom_line(mapping = aes(x = x, y = area / 10000, color =  year), alpha = 1, size = 0.3) +
+    scale_color_manual(values=pal) + 
+    theme_classic() +
+    theme(legend.background = element_rect(fill = "white"),
+          plot.margin= grid::unit(c(0, 0.5, 0, 0.5), "in"),
+          axis.text = element_text(size = 6),
+          axis.title = element_text(size = 6),
+          axis.line = element_line(linewidth = 0.2),
+          axis.ticks = element_line(linewidth = 0.2),
+          legend.key.size = unit(0.4, "in"),
+          legend.title = element_blank(),
+          legend.text = element_text(size = 6)) +
+    coord_fixed(ratio = 10) +
+    xlab(NULL) +
+    ylab(expression(atop('WUI',  ''%*% 10 ^ {4} ~ km ^ {2}))) +
+    scale_x_continuous(breaks = c(-150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150), labels = c("150°W", "120°W", "-90°W", "-60°W", "-30°W", "0°", "30°E", "60°E", "90°E", "120°E", "150°E"), limits = c(-180, 180), expand = c(0,0)) +
+    scale_y_continuous(expand = c(0,0), breaks = c(0, 1, 2), labels = c(0, 1, 2), position = 'right')
+# get legend of longitude plot
+l1 <- get_legend(p1)
+# delete legend
+p1 <- p1 + theme(legend.position = 'none')
+
+# latitude marginal plot at 0.1°
+p2 <- ggplot(data = bylat, mapping = aes(y = y, group = year)) + 
+    geom_line(mapping = aes(y = area / 10000, x = y, color =  year), alpha = 1, size = 0.3) +
+    scale_color_manual(values=pal) + 
+    # scale_fill_locuszoom(alpha = 0.7) +
+    theme_classic() +
+    theme(
+      plot.margin = grid::unit(c(0, 0.1, 0.1, 0.1), "in"),
+      axis.text = element_text(size = 6),
+      axis.title = element_text(size = 6),
+      axis.line = element_line(linewidth = 0.2),
+      axis.ticks = element_line(linewidth = 0.2),
+      legend.position = "none") +
+    coord_fixed(ratio = 4) +
+    xlab(NULL) +
+    ylab(expression(atop('WUI', '' %*% 10 ^ {4} ~ km ^ {2}))) +
+    scale_y_continuous(expand=c(0,0), breaks = c(1, 3, 5)) +
+    scale_x_reverse(breaks = rev(c(-60,  -30, 0, 30, 60)),
+                    labels = rev(c("60°S", "30°S", "0°", "30°N", "60°N")),
+                    limits = c(86, -61)) 
+```
+
+### ocean bottom data
+```{r}
+# read original data
+bath <- raster(paste0(idir, "Data/Blue-Earth-Bathymetry.tif"))
+
+# crop and resample data to align main result
+bath2 <- crop(bath, w2020)
+bath3 <- resample(bath2, w2020)
+
+# remove terrestrial data
+bath3[bath3 > 0] <- NA
+
+# get dataframe
+df_b <- as.data.frame(bath3, xy = T)
+```
+
+### main plot 
+```{r}
+w2020 <- aggregate(rList[[3]], fact=c(10,10)) %>% 
+  projectRaster(res = c(0.1,0.1), crs = crs)
+w2020[w2020 <= 0] <- NA
+df <- as.data.frame(w2020, xy = T)
+
+colorscale <- scale_fill_gradient2(low = "#800026", high = "#ffffcc", mid = "#fd8d3c", trans = "log1p",
+                                     na.value = "transparent", midpoint = log1p(0.4), breaks = seq(0,1,0.2), labels = scales::percent,
+                                     guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "WUI (%)"))
+
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = crs)
+
+p <- ggplot() +
+    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+    geom_sf(data = world, fill = '#252525', color = NA) +
+    theme_classic() +
+    scale_x_continuous(expand=c(0,0)) +
+    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+    new_scale_fill() +
+    geom_raster(data = df, aes(x = x, y = y,fill = rmNA_WUI_2020_1km)) +
+    # blue palatte 
+    # scale_fill_stepsn(colors = c("#081d58","#01eaff","#7aff85","#ffe900","#d73027", "#800026"), na.value = "transparent",
+    # purple palatte
+    scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                      breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                      labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " "), 
+                      guide = guide_colorsteps(barwidth = 8, barheight = 0.8, title.position = "top", 
+                                               title.hjust = 0.5, title = expression('Wildland Urban Interface (%)'), label.hjust = 0.5)) +
+    geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+    theme(legend.position = c(0.155, 0.12),
+          legend.direction = 'horizontal', 
+          legend.background = element_rect(fill = 'transparent'),
+          panel.border = element_blank(),
+          text = element_text(size = 10),
+          legend.margin=margin(0,0,0,0),
+          legend.box.margin=margin(0,0,0,0),
+          legend.text = element_text(color = "black"),
+          axis.text.x  = element_blank(),
+          axis.text.y  = element_blank(),
+          axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(hjust = 0.1, vjust = -5), 
+          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))+
+    labs(x ="", y = "", fill = expression("WUI percentage")) +
+    geom_rect(aes(xmin = 111, xmax = 117, ymin = 21.5, ymax = 24.5), color = "red", inherit.aes = FALSE, fill = "transparent", linewidth = 0.5) +
+    geom_rect(aes(xmin = 26, xmax = 32, ymin = -28, ymax = -25), color = "red", inherit.aes = FALSE, fill = "transparent", linewidth = 0.5) +
+    geom_rect(aes(xmin = -87, xmax = -81, ymin = 32, ymax = 35), color = "red", inherit.aes = FALSE, fill = "transparent", linewidth = 0.5)
+```
+
+## regional WUI in 2020
+```{r}
+adm1 <- rgdal::readOGR(paste0(idir, "Data/gadm/boundary/adm1.shp")) %>%
+  sf::st_as_sf()
+st_crs(adm1) <- wgs84
+sf::sf_use_s2(F)
+
+# Eastern North America
+# xmin = -86, xmax = -86, ymin = 31, ymax = 35
+ena_adm <- st_crop(adm1, extent(-87, -81, 32, 35))
+ena_raster <- crop(rList[[3]], extent(-87, -81, 32, 35))
+ena_raster[ena_raster == 0] <- NA
+df_ena <- as.data.frame(ena_raster, xy = T)
+
+city <- cbind(33.75072937354568, -84.38924598137437, 'Atlanta') %>%
+  as.data.frame()
+names(city) <- c('y', 'x', 'name')
+city$x <- as.double(city$x)
+city$y <- as.double(city$y)
+
+pena <- ggplot() +
+  geom_sf(data = ena_adm, fill = '#252525', color = NA) +
+  geom_raster(data = df_ena, aes(x = x, y = y,fill = rmNA_WUI_2020_1km)) +
+  scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                    breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                    labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " ")) +
+  geom_sf(data = ena_adm, fill = NA, lwd = 0.1, color = "#bdbdbd") + 
+  geom_point(data = city, mapping = aes(x = x, y = y), color = 'black', fill = '#78e3f3', shape = 21, size = 1, stroke = 0.5) + 
+  geom_text_repel(data = city, mapping = aes(x = x, y = y, label = name), color = 'white', size = 3, nudge_y = -0.1, nudge_x = 0.45) +
+  theme_classic() +
+  theme(legend.position = "none",
+        legend.direction = 'horizontal',
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.2),
+        text = element_text(size = 7),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        axis.text.y  = element_text(angle = 90, hjust = 0.5),
+        axis.line = element_blank(),
+        axis.ticks = element_line(linewidth = 0.2),
+        plot.title = element_text(hjust = 0.1, vjust = -5),
+        plot.background = element_rect(color = "transparent", fill ="transparent")) +
+  labs(x ="", y = "", fill = '') +
+  scale_x_continuous(expand=c(0,0), limits = c(-87, -81), breaks = c(-85, -83)) +
+  scale_y_continuous(expand=c(0,0), limits = c(32, 35), breaks = c(33, 34))
+
+# South Africa
+# xmin = 27, xmax = 33, ymin = -28, ymax = -25
+sa_adm <- st_crop(adm1, extent(26, 32, -28, -25))
+sa_raster <- crop(rList[[3]], extent(26, 32, -28, -25))
+sa_raster[sa_raster == 0] <- NA
+df_sa <- as.data.frame(sa_raster, xy = T)
+
+city <- cbind(-26.203490890088982, 28.027993022855597, 'Johannesburg') %>%
+  as.data.frame()
+names(city) <- c('y', 'x', 'name')
+city$x <- as.double(city$x)
+city$y <- as.double(city$y)
+
+psa <- ggplot() +
+  geom_sf(data = sa_adm, fill = '#252525', color = NA) +
+  new_scale_fill() +
+  geom_raster(data = df_sa, aes(x = x, y = y,fill = rmNA_WUI_2020_1km)) +
+  scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                    breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                    labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " ")) +
+  geom_sf(data = sa_adm, fill = NA, lwd = 0.1, color = "#bdbdbd") +  
+  geom_point(data = city, mapping = aes(x = x, y = y), color = 'black', fill = '#78e3f3', shape = 21, size = 1, stroke = 0.5) + 
+  geom_text_repel(data = city, mapping = aes(x = x, y = y, label = name), color = 'white', size = 3, nudge_y = -0.15, nudge_x = 0.45) +
+  theme_classic() +
+  theme(legend.position = "none",
+        legend.direction = 'horizontal',
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.2),
+        text = element_text(size = 7),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        axis.text.y  = element_text(angle = 90, hjust = 0.5),
+        axis.line = element_blank(),
+        axis.ticks = element_line(linewidth = 0.2),
+        plot.title = element_text(hjust = 0.1, vjust = -5),
+        plot.background = element_rect(color = "transparent", fill ="transparent")) +
+  labs(x ="", y = "", fill = '') +
+  scale_x_continuous(expand=c(0,0), limits = c(26, 32), breaks = c(28, 30)) +
+  scale_y_continuous(expand=c(0,0), limits = c(-28, -25), breaks = c(-27, -26))
+
+
+# Southeast China
+# xmin = 112, xmax = 118, ymin = 22, ymax = 25
+china_adm <- st_crop(adm1, extent(111, 117, 21.5, 24.5))
+china_raster <- crop(rList[[3]], extent(111, 117, 21.5, 24.5))
+china_raster[china_raster == 0] <- NA
+china_bath <- crop(bath, extent(111, 117, 21.5, 24.5)) %>%
+  resample(china_raster)
+china_bath[china_bath > 0] <- NA
+df_c <- as.data.frame(china_raster, xy = T)
+df_cB <- as.data.frame(china_bath, xy = T)
+
+city <- cbind(23.296484426144968, 113.23629925552096, 'Guangzhou') %>%
+  as.data.frame()
+names(city) <- c('y', 'x', 'name')
+city$x <- as.double(city$x)
+city$y <- as.double(city$y)
+
+pc <- ggplot() +
+    geom_raster(data = df_cB, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none') +
+    geom_sf(data = china_adm, fill = '#252525', color = NA) +
+    new_scale_fill() +
+    geom_raster(data = df_c, aes(x = x, y = y,fill = rmNA_WUI_2020_1km)) +
+    scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                      breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                      labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " ")) +
+    geom_sf(data = china_adm, fill = NA, lwd = 0.1, color = "#bdbdbd") +  
+    geom_point(data = city, mapping = aes(x = x, y = y), color = 'black', fill = '#78e3f3', shape = 21, size = 1, stroke = 0.5) + 
+    geom_text_repel(data = city, mapping = aes(x = x, y = y, label = name), color = 'white', size = 3,  nudge_y = -0.15, nudge_x = 0.15) +
+    theme_classic() +
+    theme(legend.position = "none",
+        legend.direction = 'horizontal',
+        legend.title = element_blank(),
+        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.2),
+        text = element_text(size = 7),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        axis.text.y  = element_text(angle = 90, hjust = 0.5),
+        axis.line = element_blank(),
+        axis.ticks = element_line(linewidth = 0.2),
+        plot.title = element_text(hjust = 0.1, vjust = -5),
+        plot.background = element_rect(color = "transparent", fill ="transparent")) +
+    labs(x ="", y = "", fill = '') +
+    scale_x_continuous(expand=c(0,0), limits = c(111, 117), breaks = c(113, 115)) +
+    scale_y_continuous(expand=c(0,0), limits = c(21.5, 24.5), breaks = c(22.5, 23.5))
+
+```
+
+## save result
+```{r}
+odir <-paste0(idir, "Figure")
+ggsave(plot = p,
+       filename = "fig2_2020.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+ggsave(plot = p1,
+       filename = "fig2_top.pdf",
+       device = "pdf", path = odir,
+       width = 190, height = 50, units = "mm",
+       dpi = 320)
+ggsave(plot = p2,
+       filename = "fig2_right.pdf",
+       device = "pdf", path = odir,
+       width = 80, height = 30, units = "mm",
+       dpi = 320)
+ggsave(plot = plot_grid(l1),
+       filename = "fig2_legend.pdf",
+       device = "pdf", path = odir,
+       width = 50, height = 30, units = "mm",
+       dpi = 320)
+ggsave(plot = pena,
+       filename = "fig2_ena.pdf",
+       device = "pdf", path = odir,
+       width = 2.3, height = 1.5, units = "in",
+       dpi = 320)
+ggsave(plot = psa,
+       filename = "fig2_sa.pdf",
+       device = "pdf", path = odir,
+       width = 2.3, height = 1.5, units = "in",
+       dpi = 320)
+ggsave(plot = pc,
+       filename = "fig2_c.pdf",
+       device = "pdf", path = odir,
+       width = 2.3, height = 1.5, units = "in",
+       dpi = 320)
+
+```
