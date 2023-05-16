@@ -11,28 +11,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## set work directory and load packages
 ```{r}
-library(raster)
-library(sf)
-library(foreach)
-library(doParallel)
-library(sp)
-library(rasterVis)
-library(RColorBrewer)
-library(dplyr)
-library(scales)
-library(aplot)
-library(ggplot2)
-library(cowplot)
-library(exactextractr)
-library(gghighlight)
-library(ggsci)
-library(data.table)
-library(ggnewscale)
-library(trend)
-library(patchwork)
+if (!require("pacman")){
+  install.packages("pacman")
+}
+require(pacman)
+pacman::p_load(raster, sf, scales, ggplot2, data.table, trend, patchwork)
+
+# tmpdir path can be changed to your own temp file path
 raster::rasterOptions(tmpdir = '/project/public/')
 
-idir <- "/GlobalWUI/"
+# idir points to where you save the project
+idir <- "~/wildfire/WUI/GlobalWUI/"
 wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 ```
 
