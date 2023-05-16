@@ -1,0 +1,33 @@
+"0","p_lu <- ggplot(lulc) +
+  geom_line(aes(x = x, y = urban/100000, group = 1), color = '#993404', alpha = 0.8, linewidth = 0.4) +
+  geom_line(aes(x = x, y = wildland/32/100000, group = 1), color =  '#74c476', alpha = 0.8, linewidth = 0.4) +
+  geom_smooth(aes(x = x, y = urban/100000, group = 1), color = '#993404', method = lm, linetype = 'dashed', fill = '#993404', linewidth = 0.6) +
+  geom_smooth(aes(x = x, y = wildland/32/100000, group = 1), color =  '#74c476', method = lm, linetype = 'dashed', fill = '#c7e9c0', linewidth = 0.6) +
+  theme_bw() +
+  annotate(""text"", 14, 16.4, label = expression(Urban ~ area  ~ 0.72 %+-% '0.05% year' ^ {-1}), color = '#993404', size = 2) +
+  annotate(""text"", 10, 18.5, label = expression(Wildland ~ area  ~ 0.05 %+-% '0.02% year' ^ {-1}), color = '#74c476', size = 2) +
+  scale_y_continuous(expand = c(0,0), labels = comma, n.breaks = 5, limits = c(16,19),
+                     name = expression(Urban %*% 10 ^ {6} ~ km ^ {2}), 
+                     sec.axis = sec_axis(~.*32, name = expression(Wildland %*% 10 ^ {6} ~ km ^ {2}), labels = comma)) +
+  scale_x_continuous(limits = c(1, 21), breaks = c(1, 11, 21), labels = c('2000', '2010', '2020')) +
+  theme(aspect.ratio = 0.8,
+        axis.title.y.left = element_text(color = '#993404', size = 7),
+        axis.title.y.right = element_text(color = '#74c476', size = 7, angle = 90),
+        axis.text.y.left = element_text(color = '#993404', size = 6, angle = 90, hjust = 0.5),
+        axis.text.y.right = element_text(color = '#74c476', size = 6, angle = 90, hjust = 0.5),
+        axis.text.x = element_text(size = 7),
+        axis.line.y.left = element_line(color = '#993404'),
+        axis.line.y.right = element_line(color = '#74c476'),
+        axis.ticks.y.left = element_line(color = '#993404'),
+        axis.ticks.y.right = element_line(color = '#74c476'),
+        axis.line = element_line(linewidth = 0.2),
+        axis.ticks = element_line(linewidth = 0.3),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(size = 7),
+        axis.title.x = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+  )
+"
+"2","Error: object 'comma' not found
+"

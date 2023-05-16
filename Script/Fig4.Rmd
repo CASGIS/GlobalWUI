@@ -1,0 +1,980 @@
+---
+title: "04c_fig3"
+author: "Yongxuan Guo"
+date: "2022/6/4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# fig4. WUI change driver's spatial pattern, color shows the partion of urban driver and wildland driver, besides percentage of WUI change
+## packages and paths
+```{r}
+# remotes::install_github("arielfri/buffr")
+library(raster)
+library(dplyr)
+library(data.table)
+library(tidyverse)
+library(classInt)
+library(patchwork)
+library(ggplot2)
+library(scales)
+library(cowplot)
+library(ggsci)
+library(spData)
+library(exactextractr)
+library(sf)
+library(ggnewscale)
+library(data.table)
+raster::rasterOptions(tmpdir = '/project/public/')
+
+idir <- "/project/public/temp_yx/"
+odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
+wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+```
+
+## draw bivarRasterPlot
+- Function
+```{r}
+# The function that produces the colour matrix
+colmat <- function(nbreaks = 3, breakstyle = "quantile",
+                   upperleft = "#0096EB", upperright = "#820050", 
+                   bottomleft = "#BEBEBE", bottomright = "#FFE60F",
+                   xlab = "x label", ylab = "y label", plotLeg = TRUE,
+                   saveLeg = FALSE) {
+   # TODO - replace any tidyr, dplyr etc. functions with data.table #
+  library(tidyverse)
+  require(ggplot2)
+  require(classInt)
+  if (breakstyle == "sd") {
+    warning("SD breaks style cannot be used.\nWill not always return the correct number of breaks.\nSee classInt::classIntervals() for details.\nResetting to quantile",
+            call. = FALSE, immediate. = FALSE)
+    breakstyle <- "quantile"}
+  # The colours can be changed by changing the HEX codes for:
+  # upperleft, upperright, bottomleft, bottomright
+  # From http://www.joshuastevens.net/cartography/make-a-bivariate-choropleth-map/
+  # upperleft = "#64ACBE"; upperright = "#574249"; bottomleft = "#E8E8E8"; bottomright = "#C85A5A";
+  # upperleft = "#BE64AC"; upperright = "#3B4994"; bottomleft = "#E8E8E8"; bottomright = "#5AC8C8";
+  # upperleft = "#73AE80"; upperright = "#2A5A5B"; bottomleft = "#E8E8E8"; bottomright = "#6C83B5";
+  # upperleft = "#73AE80"; upperright = "#804D36"; bottomleft = "#E8E8E8"; bottomright = "#FEF287";
+  # upperleft = "#9972AF"; upperright = "#804D36"; bottomleft = "#E8E8E8"; bottomright = "#C8B35A";
+  # upperleft = "#DA8DC8"; upperright = "#697AA2"; bottomleft = "#E8E8E8"; bottomright = "#73BCA0";
+  # Similar to Teuling, Stockli, Seneviratnea (2011) [https://doi.org/10.1002/joc.2153]
+  # upperleft = "#F7900A"; upperright = "#993A65"; bottomleft = "#44B360"; bottomright = "#3A88B5";
+  # Viridis style
+  # upperleft = "#FEF287"; upperright = "#21908D"; bottomleft = "#E8F4F3"; bottomright = "#9874A1";
+  # Similar to Fjeldsa, Bowie, Rahbek 2012
+  # upperleft = "#34C21B"; upperright = "#595757"; bottomleft = "#FFFFFF";  bottomright = "#A874B8";
+  # Default from original source
+  # upperleft = "#0096EB"; upperright = "#820050"; bottomleft= "#BEBEBE"; bottomright = "#FFE60F";
+  my.data <- seq(0, 1, .01)
+  # Default uses terciles (Lucchesi and Wikle [2017] doi: 10.1002/sta4.150)
+  my.class <- classInt::classIntervals(my.data,
+                                       n = nbreaks,
+                                       style = breakstyle,
+                                       )
+  my.pal.1 <- classInt::findColours(my.class, c(upperleft, bottomleft))
+  my.pal.2 <- classInt::findColours(my.class, c(upperright, bottomright))
+  col.matrix <- matrix(nrow = 101, ncol = 101, NA)
+  for (i in 1:101) {
+    my.col <- c(paste(my.pal.1[i]), paste(my.pal.2[i]))
+    col.matrix[102 - i, ] <- classInt::findColours(my.class, my.col)
+  }
+  ## need to convert this to data.table at some stage.
+  col.matrix.plot <- col.matrix %>%
+    as.data.frame(.) %>% 
+    mutate("Y" = row_number()) %>%
+    mutate_at(.tbl = ., .vars = vars(starts_with("V")), .funs = list(as.character)) %>% 
+    pivot_longer(data = ., cols = -Y, names_to = "X", values_to = "HEXCode") %>% 
+    mutate("X" = as.integer(sub("V", "", .$X))) %>%
+    distinct(as.factor(HEXCode), .keep_all = TRUE) %>%
+    mutate(Y = rev(.$Y)) %>% 
+    dplyr::select(-c(4)) %>%
+    mutate("Y" = rep(seq(from = 1, to = nbreaks, by = 1), each = nbreaks),
+           "X" = rep(seq(from = 1, to = nbreaks, by = 1), times = nbreaks)) %>%
+    mutate("UID" = row_number())
+  # Use plotLeg if you want a preview of the legend
+  if (plotLeg) {
+    p <- ggplot(col.matrix.plot, aes(X, Y, fill = HEXCode)) +
+      geom_tile() +
+      scale_fill_identity() +
+      coord_equal(expand = FALSE) +
+      theme_void() +
+      theme(aspect.ratio = 1,
+            axis.title = element_text(size = 8, colour = "black",hjust = 0.5, 
+                                      vjust = 1),
+            axis.title.y = element_text(angle = 90, hjust = 0.5)) +
+      xlab(bquote(.(xlab) ~ '  0%' ~ symbol("\256") ~ '100%')) +
+      ylab(bquote(.(ylab) ~ '  0%' ~ symbol("\256") ~ '100%'))
+    print(p)
+    assign(
+      x = "BivLegend",
+      value = p,
+      pos = .GlobalEnv
+    )
+  }
+  # Use saveLeg if you want to save a copy of the legend
+  if (saveLeg) {
+    ggsave(filename = "bivLegend.pdf", plot = p, device = "pdf",
+           path = "./", width = 4, height = 4, units = "in",
+           dpi = 300)
+  }
+  seqs <- seq(0, 100, (100 / nbreaks))
+  seqs[1] <- 1
+  col.matrix <- col.matrix[c(seqs), c(seqs)]
+  attr(col.matrix, "breakstyle") <- breakstyle
+  attr(col.matrix, "nbreaks") <- nbreaks
+  return(col.matrix)
+}
+
+# Function to assign colour-codes to raster data
+# As before, by default assign tercile breaks
+# fixed breaks
+bivariate.map <- function(rasterx, rastery, colourmatrix = col.matrix,
+                          export.colour.matrix = TRUE, batch,
+                          outname = paste0("colMatrix_rasValues", names(rasterx))) {
+  # TO DO - replace raster with terra #
+  require(raster)
+  require(classInt)
+  # export.colour.matrix will export a data.frame of rastervalues and RGB codes 
+  # to the global environment outname defines the name of the data.frame
+  quanx <- getValues(rasterx)
+  # remove 0 value
+  # quanx[quanx == 0] <- NA
+  tempx <- data.frame(quanx, quantile = rep(NA, length(quanx)))
+  # brks <- with(tempx, classIntervals(quanx,
+  #                                   n = attr(colourmatrix, "nbreaks"),
+  #                                   style = attr(colourmatrix, "breakstyle"))$brks)
+  brks <- with(tempx, classIntervals(quanx, 
+                                     fixedBreaks= c(-1, -0.05,-0.01, 0, 0.01, 0.05, 1), 
+                                     style = 'fixed')$brks)
+  ## Add (very) small amount of noise to all but the first break
+  ## https://stackoverflow.com/a/19846365/1710632
+  brks[-1] <- brks[-1] + seq_along(brks[-1]) * .Machine$double.eps
+  r1 <- within(tempx, quantile <- cut(quanx,
+                                     breaks = brks,
+                                     labels = 2:length(brks),
+                                     include.lowest = TRUE))
+  quantr <- data.frame(r1[, 2])
+  quany <- getValues(rastery)
+  # remove 0 value
+  # quany[quany == 0] <- NA
+  tempy <- data.frame(quany, quantile = rep(NA, length(quany)))
+  # brksy <- with(tempy, classIntervals(quany,
+  #                                    n = attr(colourmatrix, "nbreaks"),
+  #                                    style = attr(colourmatrix, "breakstyle"))$brks)
+  brksy <- with(tempx, classIntervals(quany, 
+                                     fixedBreaks= c(-1, -0.05,-0.01, 0, 0.01, 0.05,1), 
+                                     style = 'fixed')$brks)
+  brksy[-1] <- brksy[-1] + seq_along(brksy[-1]) * .Machine$double.eps
+  r2 <- within(tempy, quantile <- cut(quany,
+                                     breaks = brksy,
+                                     labels = 2:length(brksy),
+                                     include.lowest = TRUE
+  ))
+  quantr2 <- data.frame(r2[, 2])
+  as.numeric.factor <- function(x) {
+    as.numeric(levels(x))[x]
+  }
+  col.matrix2 <- colourmatrix
+  cn <- unique(colourmatrix)
+  for (i in 1:length(col.matrix2)) {
+    ifelse(is.na(col.matrix2[i]),
+           col.matrix2[i] <- 1, col.matrix2[i] <- which(
+             col.matrix2[i] == cn
+           )[1]
+    )
+  }
+  col.matrix <- col.matrix2
+  col.matrix[2,] <- col.matrix2[7,]
+  col.matrix[3,] <- col.matrix2[6,]
+  col.matrix[4,] <- col.matrix2[5,]
+  col.matrix[5,] <- col.matrix2[4,]
+  col.matrix[6,] <- col.matrix2[3,]
+  col.matrix[7,] <- col.matrix2[2,]
+  col.matrix[1,] <- col.matrix[2,]
+  col.matrix[,1] <- col.matrix[,2]
+  # Export the colour.matrix to data.frame() in the global env
+  # Can then save with write.table() and use in ArcMap/QGIS
+  # Need to save the output raster as integer data-type
+  if (export.colour.matrix) {
+    # create a dataframe of colours corresponding to raster values
+    exportCols <- as.data.frame(cbind(
+      as.vector(col.matrix2), as.vector(colourmatrix),
+      t(col2rgb(as.vector(colourmatrix)))
+    ))
+    # rename columns of data.frame()
+    colnames(exportCols)[1:2] <- c("rasValue", "HEX")
+    # Export to the global environment
+    assign(
+      x = outname,
+      value = exportCols,
+      pos = .GlobalEnv
+    )
+  }
+  # cols <- numeric(length(quantr[, 1]))
+
+# pb <- progress_bar$new(
+#   format = "  progressing [:bar] :percent eta: :eta",
+#   total = length(quantr[, 1]), clear = FALSE, width= 60)
+# 
+# for(i in 1:length(quantr[, 1])) {
+#     a <- as.numeric.factor(quantr[i, 1])
+#     b <- as.numeric.factor(quantr2[i, 1])
+#     cols[i] <- as.numeric(col.matrix2[b, a])
+#     pb$tick()
+#   Sys.sleep(1 / 100)
+# }
+  
+  require(doSNOW)
+  cores <- parallel::detectCores()
+  # cl <- makeSOCKcluster(cores/4)
+  cl <- makeSOCKcluster(10)
+  registerDoSNOW(cl)
+  
+  pb <- txtProgressBar(min = 1, max = batch, style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress=progress)
+  tab <- length(quantr[, 1]) / batch
+  result <- 
+    foreach(i=1:batch, .packages="dplyr", .options.snow=opts,
+            .combine='rbind') %dopar% {
+              cols <- NULL
+              
+              for(j in (1 + (i - 1 ) * tab): (i * tab)) {
+                a <- as.numeric.factor(quantr[j, 1])
+                b <- as.numeric.factor(quantr2[j, 1])
+                c <- r1[j, 1]
+                d <- r2[j, 1]
+                if (c == 0 & d == 0){
+                   cols[[j - (i - 1 ) * tab]] <- as.numeric(col.matrix[NA, NA]) %>%
+                  as.data.frame() %>%
+                  mutate(i = j) %>%
+                     unique() %>%
+                  as.data.frame()
+                } else{
+                  if(c == 0 & d > 0){
+                    a <- a + 1
+                  } else if (d == 0 & c > 0){
+                    b <- b + 1
+                  }
+                   cols[[j - (i - 1 ) * tab]] <- as.numeric(col.matrix[b, a]) %>%
+                  as.data.frame() %>%
+                  mutate(i = j) %>%
+                  as.data.frame()
+                }
+                
+                # cat(paste0(j, '\n'))
+              }
+              cols <- bind_rows(cols)
+              names(cols) <- c('color', 'i')
+              write.csv(cols, file = paste0("/project/public/temp_yx/delta/driver_table_bi/temp/cols_", i, ".csv"))
+              gc()
+            }
+  close(pb)
+  stopCluster(cl)
+  
+  colList <- NULL
+  file <- dir(path = "/project/public/temp_yx/delta/driver_table_bi/temp/")  
+  for(i in 1:length(file)){
+    colList[[i]] <- read.csv(paste0("/project/public/temp_yx/delta/driver_table_bi/temp/", file[i]))
+  }
+  cols <- bind_rows(colList) %>%
+    arrange(i) %>%
+    dplyr::select(color) %>%
+    unlist() %>%
+    as.numeric()
+  r <- rasterx
+  r[1:length(r)] <- cols
+  system("rm /project/public/temp_yx/delta/driver_table_bi/temp/*")
+  return(r)
+}
+```
+
+- Drawing
+## bivirate map
+### generate bivirate data
+```{r}
+# read files
+files <- dir(path = odir, pattern = glob2rx('*00_20_0.1*.tif'))
+# files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
+
+r <- NULL
+for(i in 1:length(files)){
+  r[[i]] <- raster(paste0(odir, files[i]))
+}
+r <- stack(r)
+
+# Create the colour matrix
+# generate 4 quadrant colour matrix
+# blue
+col.matrix1 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#64bbc2", upperright = "#2c81d4", bottomleft = "#b6d9d4",  bottomright = "#8eb2bf",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# green
+col.matrix2 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#b9dbc4", upperright = "#93b388", bottomleft = "#72cf87",  bottomright = "#5bbc25",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# orange
+col.matrix3 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#dfa222", upperright = "#eaa087", bottomleft = "#cabc86",  bottomright = "#e5d0c3",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# purple
+col.matrix4 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#a581c6", upperright = "#d9bbd7", bottomleft = "#8f29db",  bottomright = "#d078c3",
+                      saveLeg = FALSE, plotLeg = FALSE)
+
+# create final colour matrix
+col.matrixD <- colmat(nbreaks = 6, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#AEDFE1", upperright = "#4FBA67", bottomleft = "#5ACB96",  bottomright = "#2A5A5B",
+                      saveLeg = FALSE, plotLeg = FALSE)
+col.matrixD [2:4, 5:7] <- col.matrix4[2:4, 2:4]
+col.matrixD [2:4, 2:4] <- col.matrix2[2:4, 2:4]
+col.matrixD [5:7, 2:4] <- col.matrix1[2:4, 2:4]
+col.matrixD [5:7, 5:7] <- col.matrix3[2:4, 2:4]
+t <- col.matrixD[2,]
+col.matrixD[2,] <- col.matrixD[4,]
+col.matrixD[4,] <- t
+t <- col.matrixD[5,]
+col.matrixD[5,] <- col.matrixD[7,]
+col.matrixD[7,] <- t
+col.matrixD[1,] <- col.matrixD[2,]
+col.matrixD[,1] <- col.matrixD[,2]
+
+# get color code
+
+col.matrix2 <- col.matrixD
+cn <- unique(col.matrixD)
+for (i in 1:length(col.matrix2)) {
+  ifelse(is.na(col.matrix2[i]),
+         col.matrix2[i] <- 1,
+         col.matrix2[i] <- which(col.matrix2[i] == cn)[1])
+}
+colorDF <- as.data.frame(cbind(as.vector(col.matrix2), as.vector(col.matrixD))) %>%
+  distinct()
+colnames(colorDF)[1:2] <- c("rasValue", "HEX")
+colL <- colorDF$HEX
+names(colL) <- as.character(colorDF$rasValue)
+
+col.matrix.plot <- col.matrixD %>%
+    as.data.frame(.) %>% 
+    mutate("Y" = row_number()) %>%
+    mutate_at(.tbl = ., .vars = vars(starts_with("V")), .funs = list(as.character)) %>% 
+    pivot_longer(data = ., cols = -Y, names_to = "X", values_to = "HEXCode") %>% 
+    mutate("X" = as.integer(sub("V", "", .$X))) %>%
+    distinct(as.factor(HEXCode), .keep_all = TRUE) %>%
+    mutate(Y = rev(.$Y)) %>% 
+    dplyr::select(-c(4)) %>%
+    mutate("Y" = rep(seq(from = 1, to = 6, by = 1), each = 6),
+           "X" = rep(seq(from = 1, to = 6, by = 1), times = 6)) %>%
+    mutate("UID" = row_number())
+colR <- raster(ncols=6,nrows=6)
+values(colR) <- col.matrix.plot$UID
+df_col <- as.data.frame(colR,xy=T)
+table <- col.matrix.plot$HEXCode%>%as.character()
+names(table) <- col.matrix.plot$UID
+BivLegend <- ggplot() +
+    geom_raster(data = df_col, aes(x = x, y = y, fill = as.character(layer))) +
+    scale_fill_manual(name = "", values = table, labels = "", na.translate = FALSE) +
+    theme_classic() +
+    theme(text = element_text(size = 10, colour = "black")) +
+    # coord_quickmap(expand = FALSE, xlim = extent(r)[1:2], ylim = extent(r)[3:4]) +
+    theme(legend.position = "none",
+          plot.background = element_rect(color = "transparent", fill = "transparent"),
+          # plot.background = element_rect(fill ="#2E2C2C", colour = "#2E2C2C"),
+          panel.background = element_rect(color = "transparent", fill = "transparent"),
+          axis.title = element_text(
+              size = 10,
+              colour = "black",
+              hjust = 0.5,
+              vjust = 1
+          ),
+          axis.text.x = element_text(size = 6, colour = 'black', margin = margin(t = 1, r = 0, b = 0, l = 0)),
+          axis.text.y = element_text(angle = 90, hjust = 0.5, size = 6, colour = 'black', margin = margin(t = 0, r = 5, b = 0, l = 0)),
+          axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
+    coord_fixed(ratio = 2) +
+    scale_x_continuous(
+        expand = c(0.03, 0),
+        breaks = seq(-180, 180, 60),
+        labels = c('-100', '-5', '-1', '0', '1', '5', '100')
+    ) +
+    scale_y_continuous(
+        expand = c(0.03, 0),
+        breaks = seq(-90, 90, 30),
+        labels = c('-100', '-5', '-1', '0', '1', '5', '100')
+    ) +
+    labs(x = expression(Delta ~ 'urban (%)'), y = expression(Delta ~ 'wildland (%)')) 
+
+# create the bivariate raster
+bivmap <- bivariate.map(rasterx = r[["urban_driver_00_20_0.1"]], rastery = r[["wildland_driver_00_20_0.1"]],
+                         export.colour.matrix = FALSE, batch = 922,
+                         colourmatrix = col.matrixD)
+
+# Convert to dataframe for plotting with ggplot
+bivMapDF <- setDT(as.data.frame(bivmap, xy = TRUE))
+colnames(bivMapDF)[3] <- "BivValue"
+bivMapDF <- melt(bivMapDF, id.vars = c("x", "y"),
+                  measure.vars = "BivValue",
+                  value.name = "bivVal",
+                  variable.name = "Variable")
+saveRDS(bivMapDF, paste0(odir, 'bivMapDF_00-20.rds'))
+bivMapDF <- readRDS(paste0(odir, 'bivMapDF_00-20.rds'))
+
+```
+### ocean bottom data
+```{r}
+# read original data
+odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
+delta <- raster(paste0(odir, "delta_20-00.tif"))
+delta <- aggregate(delta, fact = c(10, 10))
+wd <- "~/wildfire/WUI/data/00_spatial/Blue-Earth-Bathymetry/"
+bath <- raster(paste0(wd, "Blue-Earth-Bathymetry.tif"))
+
+# crop and resample data to align main result
+bath2 <- crop(bath, delta)
+bath3 <- resample(bath2, delta)
+
+# remove terrestrial data
+bath3[bath3 > 0] <- NA
+
+# get dataframe
+df_b <- as.data.frame(bath3, xy = T)
+```
+### drawing
+```{r}
+
+# Make the map using ggplot
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = crs(r[[1]]))
+
+map <- ggplot() +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  geom_raster(data = bivMapDF, aes(x = x, y = y, fill = as.character(bivVal))) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  # scale_y_continuous(breaks = seq(-50, 75, by = 30),
+  #                    labels = paste0(seq(-50, 75, 30), "°")) +
+  # scale_x_continuous(breaks = seq(-180, 180, 60),
+  #                    labels = paste0(seq(-180, 180, 60), "°")) +
+  # scale_fill_gradientn(colours = col.matrixL, na.value = "transparent") + 
+  scale_fill_manual(name = "",
+                    values = colL,
+                    labels = "",
+                    na.translate = FALSE) +
+  new_scale_fill() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
+  theme_classic() +
+  theme(text = element_text(size = 10, colour = "black")) +
+  # coord_quickmap(expand = FALSE, xlim = extent(r)[1:2], ylim = extent(r)[3:4]) +
+  theme(legend.position = "none",
+        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # plot.background = element_rect(fill ="#2E2C2C", colour = "#2E2C2C"),
+        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title =element_blank(),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) 
+
+
+driver <- map +
+    # ggtitle("Driver of lost WUI") +
+    theme(plot.title = element_text(hjust = 0.5, size = 14),plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
+    inset_element(
+        BivLegend,
+        left = -0.1,
+        bottom = 0.05,
+        right = 0.35,
+        top = 0.5,
+        align_to = "full"
+    ) 
+
+```
+
+### save result
+```{r}
+odir <- "~/wildfire/WUI/data/02_analysis/1127"
+ggsave(plot = driver,
+       filename = "fig4_2020-00_driver.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+```
+
+## read 1km WUI
+```{r}
+wd <- "~/wildfire/WUI/data/01_GlobeLand30/1km/"
+files <- dir(path = wd, pattern = glob2rx('*1km.tif'))
+rList <- NULL
+WUI_area <- NULL
+for(i in 1:length(files)){
+  rList[[i]] <- raster(paste0(wd, files[i]))
+}
+crs <- crs(rList[[3]])
+```
+
+## distribution of bivirate pixels
+```{r}
+df <- as.data.frame(r, xy = T) %>% 
+  dplyr::filter(!(urban_driver_00_20_0.1 == 0 & wildland_driver_00_20_0.1 == 0))
+names(df) <- c('x', 'y', 'urban', 'wildland')
+df$xcut <- cut(df$urban, breaks = seq(-0.4, 0.4, 0.05), right = T, labels = F)
+df$ycut <- cut(df$wildland, breaks = seq(-0.4, 0.4, 0.05), right = T, labels = F)
+value <- df %>% 
+  mutate(code = 16 * (ycut - 1) + xcut) %>%
+  group_by(code) %>%
+  summarise(count = n()) %>%
+  filter(!is.na(code))
+dt <- as.data.frame(raster(ncol = 16, nrow = 16, xmn = 0.5, xmx = 16.5, ymn = 0.5, ymx = 16.5), xy = T)
+names(dt) <- c('x', 'y', 'col')
+dt$code <- 16 * (dt$y - 1) + dt$x
+dt <- dt %>%
+  left_join(value, by = "code")
+
+dt1 <- dt %>%
+  filter(x > 8 & y > 8)
+dt1$cut <- cut(dt1$count, breaks = c(0, 10, 100, 1000, max(dt1$count, na.rm = T)), labels = F)
+dt1$col <- paste0('A', dt1$cut)
+colsA <- c('#f2f0f7','#cbc9e2','#9e9ac8','#6a51a3', 'transparent')
+names(colsA) <- c('A1', 'A2', 'A3', 'A4', 'ANA')
+
+dt2 <- dt %>%
+  filter(x < 9 & y > 8)
+dt2$cut <- cut(dt2$count, breaks = c(0, 10, 100, 1000, max(dt2$count, na.rm = T)), labels = F)
+dt2$col <- paste0('B', dt2$cut)
+colsB <- c('#edf8e9','#bae4b3','#74c476','#238b45', 'transparent')
+names(colsB) <- c('B1', 'B2', 'B3', 'B4', 'BNA')
+
+dt3 <- dt %>%
+  filter(x < 9 & y < 9)
+dt3$cut <- cut(dt3$count, breaks = c(0, 10, 100, 1000, max(dt3$count, na.rm = T)), labels = F)
+dt3$col <- paste0('C', dt3$cut)
+colsC <- c('#eff3ff','#bdd7e7','#6baed6','#2171b5', 'transparent')
+names(colsC) <- c('C1', 'C2', 'C3', 'C4', 'CNA')
+
+dt4 <- dt %>%
+  filter(x > 8 & y < 9)
+dt4$cut <- cut(dt4$count, breaks = c(0, 10, 100, 1000, max(dt4$count, na.rm = T)), labels = F)
+dt4$col <- paste0('D', dt4$cut)
+colsD <- c('#feedde','#fdbe85','#fd8d3c','#d94701', 'transparent')
+names(colsD) <- c('D1', 'D2', 'D3', 'D4', 'DNA')
+
+dt <- bind_rows(dt1, dt2, dt3, dt4)
+cols <- c(colsA, colsB, colsC, colsD)
+
+p <- ggplot(data = dt) +
+    geom_raster(aes(x = x, y = y, fill = col), hjust = 0, vjust = 0) +
+    geom_text(data = dt[dt$count >= 1000, ], mapping = aes(x = x - 0.5, y = y - 0.5, label = count), size = 1) +
+    geom_text(data = dt[dt$count < 1000, ], mapping = aes(x = x - 0.5, y = y - 0.5, label = count), size = 2) +
+    scale_fill_manual(values = cols, labels = names, na.translate = FALSE, guide = 'none') +
+    theme_bw() +
+    theme(
+        plot.background = element_rect(color = "transparent", fill ="transparent"),
+        plot.margin = margin(5,8,5,5),
+        legend.background = element_rect(color = "transparent", fill ="transparent"),
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        panel.grid = element_blank()) +
+    scale_x_continuous(expand = c(0,0), labels = seq(-4,4,1), breaks = seq(0,16,2)) + 
+    scale_y_continuous(expand = c(0,0), labels = seq(-4,4,1), breaks = seq(0,16,2)) +
+    labs(x = expression(Delta ~ 'urban (%)'), y = expression(Delta ~ 'wildland (%)'), fill = '') +
+    coord_fixed(ratio = 1)
+
+odir <- "~/wildfire/WUI/data/02_analysis/1127"
+ggsave(plot = p,
+       filename = "fig3_distribution.pdf",
+       device = "pdf", path = odir,
+       width = 3, height = 3, units = "in",
+       dpi = 320)
+```
+
+## statitic graph
+```{r}
+odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
+# read files
+files <- dir(path = odir, pattern = glob2rx('*00_10_0.1*.tif'))
+# files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
+r <- NULL
+for(i in 1:length(files)){
+  r[[i]] <- raster(paste0(odir, files[i]))
+}
+# read files
+files <- dir(path = odir, pattern = glob2rx('*10_20_0.1*.tif'))
+# files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
+for(i in 1:length(files)){
+  r[[i+2]] <- raster(paste0(odir, files[i]))
+}
+
+# u: urban, w:wildland, i:increased d:decreased 10:00-10 20:10-20
+ui_10 <- r[[1]]
+ui_10[ui_10 < 0] <- NA
+ud_10 <- r[[1]]
+ud_10[ud_10 > 0] <- NA
+wi_10 <- r[[2]]
+wi_10[wi_10 < 0] <- NA
+wd_10 <- r[[2]]
+wd_10[wd_10 > 0] <- NA
+static_10 <- stack(ui_10, ud_10, wi_10, wd_10)
+names(static_10) <- c("urban_increased", "urban_decreased", "wildland_increased", "wildland_decreased")
+
+ui_20 <- r[[3]]
+ui_20[ui_20 < 0] <- NA
+ud_20 <- r[[3]]
+ud_20[ud_20 > 0] <- NA
+wi_20 <- r[[4]]
+wi_20[wi_20 < 0] <- NA
+wd_20 <- r[[4]]
+wd_20[wd_20 > 0] <- NA
+static_20 <- stack(ui_20, ud_20, wi_20, wd_20)
+names(static_20) <- c("urban_increased", "urban_decreased", "wildland_increased", "wildland_decreased")
+
+odir <- "~/wildfire/WUI/data/00_spatial/"
+region <- rgdal::readOGR(paste0(odir, "basisRegion_union.shp")) %>%
+  sf::st_as_sf()
+
+mypal <- c("#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#5b5a5a", "#5b5a5a", "#5b5a5a", rgb(0,0,0,0))
+show_col(mypal)
+names(mypal) <- as.character(c(1:8, 11:9, -999))
+```  
+
+### global plots
+```{r}
+t <- NULL
+cellArea <- raster::area(static_10[[1]])
+for(i in 1:4){
+    percent <- static_10[[i]] * cellArea
+    t[i] <- cellStats(percent, stat = 'sum', na.rm = TRUE)
+}
+cellArea <- raster::area(static_20[[1]])
+for(i in 1:4){
+    percent <- static_20[[i]] * cellArea
+    t[i+4] <- cellStats(percent, stat = 'sum', na.rm = TRUE)
+}
+t <- t %>%
+    cbind(driver = c(names(static_10), names(static_20))) %>%
+    as.data.frame() %>%
+    mutate(type = 'delta') %>% mutate(year = 2010)
+for(i in 5:8){
+  t$year[i] <- 2020
+}
+names(t) <- c('data', 'driver', 'type', 'year')
+t$data <- as.double(t$data)
+base <- read.csv("~/wildfire/WUI/data/01_GlobeLand30/analysis/WUI_area.csv")
+t[9,] <- c(base[1,2:3],'delta', 2000)
+t[1:4, 2] <- c('urban+', 'urban-', 'wildland+', 'wildland-')
+t[5:8, 2] <- c('urban+', 'urban-', 'wildland+', 'wildland-')
+
+# calculate 2000-2010 base
+t2 <- t[9,]
+# urban+
+t2[1,] <- c(base[1,2], 'urban+', 'base', 2010)
+# urban-
+t2[2,] <- c(sum(t[1:2,1]) + t[9,1], 'urban-', 'base', 2010)
+# wildland+
+t2[3,] <- c(sum(t[1:2,1]) + t[9,1], 'wildland+', 'base', 2010)
+# wildland-
+t2[4,] <- c(sum(t[1:4,1]) + t[9,1], 'wildland-', 'base', 2010)
+# 2010 base
+t2[5,] <- c(sum(t[1:4,1]) + t[9,1], '2010', 'delta', 2010)
+t2$data <- as.double(t2$data)
+t2$year <- as.double(t2$year)
+
+# calculate 2010-2020 base
+t3 <- t[9,]
+# urban+
+t3[1,] <- c(t2[4,1], 'urban+', 'base', 2020)
+# urban-
+t3[2,] <- c(sum(t[5:6,1]) + t2[4,1], 'urban-', 'base', 2020)
+# wildland+
+t3[3,] <- c(sum(t[5:6,1]) + t2[4,1], 'wildland+', 'base', 2020)
+# wildland-
+t3[4,] <- c(sum(t[5:8,1]) + t2[4,1], 'wildland-', 'base', 2020)
+# 2010 base
+t3[5,] <- c(sum(t[5:8,1]) + t2[4,1], '2020', 'delta', 2020)
+t3$data <- as.double(t3$data)
+t3$year <- as.double(t3$year)
+
+# draw abs change value
+# prepare data
+t_abs <- bind_rows(t, t2, t3) %>% 
+  group_by(type) %>% 
+  mutate(dummy = ifelse(type == "delta", as.character(row_number()), "-999"))
+t_abs$origin <- as.double(t_abs$data)
+t_abs$data <- as.double(t_abs$data) %>% abs()
+t_abs$driver <- paste0(t_abs$year, '_', t_abs$driver)
+t_abs$driver[9]<-'2000'
+t_abs$driver[14]<-'2010'
+t_abs$driver[19]<-'2020'
+t_abs$x <- as.double(factor(t_abs$driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")))
+
+# set label
+po <- t_abs %>%
+  group_by(driver) %>%
+  summarise(y = sum(data)) %>%
+  left_join(t_abs[t_abs$type=='delta',], by = c('driver'='driver')) %>%
+  as.data.frame()
+po$percentage <- 0
+for(i in 3:6) {
+  po$percentage[i] <- po$data[i] / po$origin[1] * 100
+}
+for(i in 8:11) {
+  po$percentage[i] <- po$data[i] / po$origin[2] * 100
+}
+delta1 <- po$percentage[4] - po$percentage[3] + po$percentage[6] - po$percentage[5]
+delta2 <- po$percentage[9] - po$percentage[8] + po$percentage[11] - po$percentage[10]
+po[12,] <- cbind('2000-2010', 3e5, 1.0, 'delta', 2010, '12', 1.0, 3.5, delta1)
+po[13,] <- cbind('2010-2020', 3e5, 1.0, 'delta', 2020, '13', 1.0, 8.5, delta2)
+po$percentage <- as.double(po$percentage)
+po$data <- as.double(po$data)
+po$label <- label_comma(accuracy = 0.01, prefix = ifelse(po$origin > 0, "+", "-"), suffix = "%")(po$percentage)
+for(i in 9:11){
+  po[po$dummy == as.character(i), ]$label <- label_comma(accuracy = 0.01)(po[po$dummy == as.character(i), ]$data/1e5)
+}
+po$x <- as.double(po$x)
+po$y <- as.double(po$y)
+
+text <- t_abs[9:19,]
+text$label<-c("", "urban(+)", "urban(-)", "wildland(+)", "wildland(-)", "", "urban(+)", "urban(-)", "wildland(+)", "wildland(-)", "")
+text$dummy<-c(9,1:4,10,5:8,11)
+text$y <- text$origin / 1e5
+for(i in c(2,3,7,8)){
+  text[i,9] <- text[i,9] + 0.5
+}
+
+# stack bar
+p_abs <- ggplot() +
+  geom_bar(data = t_abs, aes(
+    x = x,
+    y = data / 100000,
+    fill = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))),
+  width = 0.8, stat = "identity") + 
+  scale_fill_manual(values = mypal) +
+  geom_text(data = po[1:11,], 
+            aes(x = x, 
+                y = y / 100000, label = label),
+            size = 2,
+            position = position_stack(1.05)) + 
+  geom_text(data = po[12:13,], 
+            aes(x = x, 
+                y = y / 100000, label = label),
+            size = 4,
+            position = position_stack(1.05)) + 
+  geom_text(data = text,
+            aes(x = x, 
+                y = y - 3, label = label, colour = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))),
+            size = 3, angle=90) +
+  scale_color_manual(values = mypal) +
+  scale_x_continuous(breaks = seq(1, 11, 1), labels = c("2000", " ", " ", " ", " ", "2010", " ", " ", " ", " ", "2020")) +
+  scale_y_continuous(expand = c(0,0), limits = c(0, max(po$y) * 1.2 / 100000), labels = comma) +
+  labs(x = '', y = expression(name = WUI %*% 10 ^ {5} ~ km ^ {2}), title = '') + 
+  theme_classic() +
+  theme(
+    legend.position = 'none', 
+    aspect.ratio = 0.7,
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 8),
+    axis.text.x = element_text(size = 10, 
+                               colour = 'black', 
+                               margin = margin(t = 5, r = 0, b = 0, l = 0)),
+    axis.title = element_text(size = 10),
+    axis.ticks.x = element_blank()
+  ) +
+  geom_segment( data = t_abs,
+                x = 2, y = 2,
+                xend = 5, yend = 2,
+                lineend = "round", # See available arrow types in example above
+                linejoin = "round",
+                size = 1, 
+                arrow = arrow(length = unit(0.1, "inches")),
+                colour = "#EC7014" # Also accepts "red", "blue' etc
+  ) +
+  geom_segment( data = t_abs,
+                x = 7, y = 2,
+                xend = 10, yend = 2,
+                lineend = "round", # See available arrow types in example above
+                linejoin = "round",
+                size = 1, 
+                arrow = arrow(length = unit(0.1, "inches")),
+                colour = "#EC7014" # Also accepts "red", "blue' etc
+  )
+
+odir <- "~/wildfire/WUI/data/02_analysis/1127"
+ggsave(plot = p_abs,
+       filename = "fig3_abs_change.pdf",
+       device = "pdf", path = odir,
+       width = 4, height = 4, units = "in",
+       dpi = 320)
+```
+
+### regional plots
+```{r}
+p_region <- ggplot(region) + 
+  geom_sf(aes(fill = Acronyms)) + 
+  geom_sf_label(aes(label = Acronyms)) + 
+  # scale_fill_discrete(palette = 5) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.line.x = element_blank(),
+        axis.ticks = element_blank())
+odir <- "~/wildfire/WUI/data/02_analysis/1007/hetorogeneous/"
+ggsave(plot = p_region,
+       filename = "SI_region.pdf",
+       device = "pdf", path = odir,
+       width = 15, height = 10, units = "in",
+       dpi = 320)
+# abs change
+cellArea <- raster::area(rList[[1]])
+area <- rList[[1]] * cellArea
+cellArea <- raster::area(static_10[[1]])
+delta_10 <- cellArea * static_10
+cellArea <- raster::area(static_20[[1]])
+delta_20 <- cellArea * static_20
+df_10 <- exact_extract(delta_10, region, fun = 'sum') %>%
+  cbind(REGION = region$region)
+names(df_10) <- c('u+_10', 'u-_10', 'w+_10', 'w-_10', 'REGION')
+df_20 <- exact_extract(delta_20, region, fun = 'sum') %>%
+  cbind(REGION = region$region)
+names(df_20) <- c('u+_20', 'u-_20', 'w+_20', 'w-_20', 'REGION')
+df_base <- exact_extract(area, region, fun = 'sum') %>%
+  cbind(REGION = region$region) %>%
+  as.data.frame() %>%
+  mutate(id = row_number())
+names(df_base) <- c('2000', 'REGION', 'id')
+df_base[,1] <- as.double(df_base[,1])
+df_origin <- left_join(df_base, df_10, by = 'REGION') %>%
+  left_join(df_20, by = 'REGION')
+df_origin[,1] <- as.double(df_origin[,1])
+df_origin$v2010 <- apply(df_origin[,c(1,4:7)],1,sum)
+df_origin$v2020 <- apply(df_origin[,c(1,8:11)],1,sum)
+odir <- "~/wildfire/WUI/data/02_analysis/static/"
+fwrite(df_origin, paste0(odir, "driver.csv"))
+
+df_origin <- fread(paste0(odir, "driver.csv"))
+pList <- NULL
+for(k in 1:14){
+  d <- NULL
+  d$data <- unlist(df_origin[k,c(4:11,1)])
+  d$driver <- c(t$driver[1:8],'2000')
+  d$year <- c(t$year[1:8],2000)
+  d <- bind_cols(d) %>%
+    mutate(type = 'delta') %>%
+    as.data.frame()
+  d <- d[,c(1,2,4,3)]
+  
+  # calculate 2000-2010 base
+  d2 <- d[9,]
+  # urban+
+  d2[1,] <- c(df_origin[k,1], 'urban+', 'base', 2010)
+  # urban-
+  d2[2,] <- c(sum(d[1:2,1]) + d[9,1], 'urban-', 'base', 2010)
+  # wildland+
+  d2[3,] <- c(sum(d[1:2,1]) + d[9,1], 'wildland+', 'base', 2010)
+  # wildland-
+  d2[4,] <- c(sum(d[1:4,1]) + d[9,1], 'wildland-', 'base', 2010)
+  # 2010 base
+  d2[5,] <- c(sum(d[1:4,1]) + d[9,1], '2010', 'delta', 2010)
+  d2$data <- as.double(d2$data)
+  d2$year <- as.double(d2$year)
+  
+  # calculate 2010-2020 base
+  d3 <- d[9,]
+  # urban+
+  d3[1,] <- c(d2[4,1], 'urban+', 'base', 2020)
+  # urban-
+  d3[2,] <- c(sum(d[5:6,1]) + d2[4,1], 'urban-', 'base', 2020)
+  # wildland+
+  d3[3,] <- c(sum(d[5:6,1]) + d2[4,1], 'wildland+', 'base', 2020)
+  # wildland-
+  d3[4,] <- c(sum(d[5:8,1]) + d2[4,1], 'wildland-', 'base', 2020)
+  # 2010 base
+  d3[5,] <- c(sum(d[5:8,1]) + d2[4,1], '2020', 'delta', 2020)
+  d3$data <- as.double(d3$data)
+  d3$year <- as.double(d3$year)
+  
+  # draw abs change value
+  # prepare data
+  d_abs <- bind_rows(d, d2, d3) %>% 
+    group_by(type) %>% 
+    mutate(dummy = ifelse(type == "delta", as.character(row_number()), "-999"))
+  d_abs$origin <- as.double(d_abs$data)
+  d_abs$data <- as.double(d_abs$data) %>% abs()
+  d_abs$driver <- paste0(d_abs$year, '_', d_abs$driver)
+  d_abs$driver[9]<-'2000'
+  d_abs$driver[14]<-'2010'
+  d_abs$driver[19]<-'2020'
+  
+  # set label
+  po <- d_abs %>%
+    group_by(driver) %>%
+    summarise(y = sum(data)) %>%
+    left_join(d_abs[d_abs$type=='delta',], by = c('driver'='driver'))
+  po$percentage <- 0
+  for(i in 3:6) {
+    po$percentage[i] <- po$data[i] / po$origin[1] * 100
+  }
+  for(i in 8:11) {
+    po$percentage[i] <- po$data[i] / po$origin[2] * 100
+  }
+  po$label <- label_comma(accuracy = 0.01, prefix = ifelse(po$origin > 0, "+", "-"), suffix = "%")(po$percentage)
+  for(i in 9:11){
+    po[po$dummy == as.character(i), ]$label <- as.character(round(po[po$dummy == as.character(i), ]$data))
+  }
+  text <- d_abs[9:19,]
+  text$label<-c("", "urban+", "urban-", "wildland+", "wildland-", "", "urban+", "urban-", "wildland+", "wildland-", "")
+  text$dummy<-c(9,1:4,10,5:8,11)
+  
+  # stack bar
+  pList[[k]] <- ggplot() +
+    geom_bar(data = d_abs, aes(
+      x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")),
+      y = data,
+      fill = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))
+    ),
+    width = 0.8,
+    stat = "identity") + 
+    scale_fill_manual(values = mypal) +
+    geom_text(data = text,
+              aes(x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")), 
+                  y = origin, label = label, colour = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))),
+              size = 1.5, angle=90, position = position_stack(0.82)) +
+    scale_color_manual(values = mypal) +
+    scale_x_discrete(labels = c("2000", " ", " ", " ", " ", "2010", " ", " ", " ", " ", "2020")) +
+    scale_y_continuous(expand = c(0,0), limits = c(0, max(po$y)*1.2), labels = comma) +
+    labs(x = '', y =expression("WUI km" ^ {2}), title = '') + 
+    theme_classic() +
+    theme(
+      legend.position = 'none', 
+      aspect.ratio = 0.5,
+      plot.title = element_text(hjust = 0.5),
+      axis.text = element_text(size = 5),
+      axis.text.x = element_text(size = 5.5),
+      axis.title = element_text(size = 5.5),
+      axis.ticks.x = element_blank(),
+      title = element_text(size = 7)
+    ) +
+    labs(title = region$Acronyms[k])
+}
+si <- plot_grid(plotlist = pList, ncol = 3)
+
+odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
+ggsave(plot = si,
+       filename = "driverStatic_00-20_regional.pdf",
+       device = "pdf", path = odir,
+       width = 180, height = 200, units = "mm",
+       dpi = 320)
+```
