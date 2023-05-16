@@ -1,0 +1,9 @@
+"0","fig5 <- p_fr + p_f + p_lu + plot_layout(nrow = 1)
+"
+"1","[1m[33mError[39m in `ggplot_add()`:[22m
+[38;5;252m[33m![38;5;252m Can't add `p_f` to a [34m<ggplot>[38;5;252m object.[39m
+Backtrace:
+[90m 1. [39mggplot2:::`+.gg`(p_fr, p_f)
+[90m 2. [39mggplot2:::add_ggplot(e1, e2, e2name)
+[90m 4. [39m[1m[94mggplot2:::ggplot_add.default([39m[22mobject, p, objectname[1m[94m)[39m[22m
+"
