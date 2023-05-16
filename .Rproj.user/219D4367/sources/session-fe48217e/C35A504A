@@ -3,9 +3,9 @@
     "path": "~/wildfire/WUI/github_key.md",
     "project_path": null,
     "type": "markdown",
-    "hash": "0",
+    "hash": "1742572067",
     "contents": "",
-    "dirty": true,
+    "dirty": false,
     "created": 1684248808352.0,
     "source_on_save": false,
     "relative_order": 2,
@@ -16,11 +16,11 @@
         "scrollLine": "0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1684129155,
+    "lastKnownWriteTime": 1684253656,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1684248871344,
+    "last_content_update": 1684253656798,
     "read_only": false,
     "read_only_alternatives": []
 }
