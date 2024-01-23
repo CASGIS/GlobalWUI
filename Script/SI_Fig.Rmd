@@ -11,43 +11,32 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## set work directory and load packages
 ```{r}
-library(raster)
-library(sf)
-library(foreach)
-library(doParallel)
-library(sp)
-library(rasterVis)
-library(RColorBrewer)
-library(dplyr)
-library(scales)
-library(aplot)
-library(ggplot2)
-library(cowplot)
-library(ggsci)
-library(patchwork)
-library(rgeoda)
-library(ggnewscale)
+if (!require("pacman")){
+  install.packages("pacman")
+}
+require(pacman)
+pacman::p_load(raster, sf, ggplot2, dplyr, cowplot, ggnewscale, ggrepel, RColorBrewer, scales, ggmap, ggpubr, data.table, ggsci, terra, ggpattern)
+
+# tmpdir path can be changed to your own temp file path
 raster::rasterOptions(tmpdir = '/project/public/')
 
-idir <- "~/wildfire/WUI/data/01_GlobeLand30/"
+# idir points to where you save the project
+idir <- "~/wildfire/WUI/GlobalWUI/"
 years <- c('2000', '2010', '2020')
 type <- 'WUI'
 wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 ```
-
-
 ## SI Fig.1
 ```{r}
-wd <- "/project/public/temp_yx/hildap_vGLOB-1.0_geotiff_wgs84/hildap_GLOB-v1.0_lulc-states"
-file <- dir(wd, pattern = glob2rx(paste0("*20219*nn.tif")), full.names = T, recursive = T)
-r <- raster(file)
-r <- aggregate(r, fact = c(10,10), fun = modal)
+r <- raster(paste0(idir, 'Data/SI/HILDA+_0.1.tif'))
+
 df <- as.data.frame(r, xy = T)
 
 world <- filter(spData::world, region_un!="Antarctica")
 world <- st_transform(world, crs = wgs84)
-wd <- "~/wildfire/WUI/data/00_spatial/Blue-Earth-Bathymetry/"
-bath <- raster(paste0(wd, "Blue-Earth-Bathymetry.tif"))
+
+# read ocean bottom data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
 
 # crop and resample data to align main result
 bath2 <- crop(bath, r)
@@ -68,34 +57,36 @@ cols <- c(rgb(227,26,28, maxColorValue = 255),
 names(cols) <- c(11, 22, 33, 44, 55, 66, 77, 00)
 labels <- c('urban', 'cropland', 'pasture', 'forest', 'grass/shrubland', 'other land', 'water', "")
 
-df[df$hilda_plus_2019_states_GLOB.v1.0_wgs84.nn == 99,]$hilda_plus_2019_states_GLOB.v1.0_wgs84.nn <- 66
+df[df$HILDA._0.1 == 99,]$HILDA._0.1 <- 66
 p <- ggplot() +
-    geom_raster(data = df, aes(x = x, y = y,fill = as.character(hilda_plus_2019_states_GLOB.v1.0_wgs84.nn))) + scale_fill_manual(values = cols, labels = labels,guide = guide_legend(title = "", direction = "vertical")) +
-    theme_classic() +
-    scale_x_continuous(expand=c(0,0)) +
-    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-    new_scale_fill() +
-    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-    geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
-    theme(legend.position = c(0.12,0.25),
-          legend.background = element_rect(colour = "transparent", fill = "transparent"),
-          panel.border = element_blank(),
-          text = element_text(size=20),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(0,0,0,0),
-          legend.text = element_text(color = "black"),
-          axis.text.x  = element_blank(),
-          axis.text.y  = element_blank(),
-          axis.line = element_blank(),
-          axis.ticks = element_blank(),
-          plot.title = element_text(hjust = 0.1, vjust = -5), 
-          # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # legend.background = element_rect(fill = "#add8e7"),
-          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
-    labs(x ="", y = "", fill = expression("WUI covered population counts"))
-odir <- "~/wildfire/WUI/data/02_analysis/SI/"
+  geom_raster(data = df, aes(x = x, y = y,fill = as.character(HILDA._0.1))) +
+  scale_fill_manual(values = cols, labels = labels,guide = guide_legend(title = "", direction = "vertical")) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  new_scale_fill() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
+  theme(legend.position = c(0.12,0.25),
+        legend.background = element_rect(colour = "transparent", fill = "transparent"),
+        panel.border = element_blank(),
+        text = element_text(size=20),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # legend.background = element_rect(fill = "#add8e7"),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
+  labs(x ="", y = "", fill = expression("WUI covered population counts"))
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
        filename = "HILDA+_2019.pdf",
        device = "pdf", path = odir,
@@ -106,16 +97,14 @@ ggsave(plot = p,
 
 ## SI Fig.2
 ```{r}
-wd <- "~/wildfire/WUI/data/07_Pop/"
-file <- dir(path = wd, pattern = glob2rx('*2020*0.01.tif'))
-pop <- raster(paste0(wd, file))
-pop <- aggregate(pop, fact = c(10,10))
+pop <- raster(paste0(idir, 'Data/SI/Pop_0.1.tif'))
 df <- as.data.frame(pop, xy = T)
 
 world <- filter(spData::world, region_un!="Antarctica")
 world <- st_transform(world, crs = wgs84)
-wd <- "~/wildfire/WUI/data/00_spatial/Blue-Earth-Bathymetry/"
-bath <- raster(paste0(wd, "Blue-Earth-Bathymetry.tif"))
+
+# read ocean bottom data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
 
 # crop and resample data to align main result
 t <- raster(xmn = -180, xmx = 180, ymn = -90, ymx = 90, crs = wgs84, resolution = c(0.1, 0.1))
@@ -127,34 +116,32 @@ bath3[bath3 > 0] <- NA
 # get dataframe
 df_b <- as.data.frame(bath3, xy = T)
 p <- ggplot() +
-    geom_raster(data = df, aes(x = x, y = y,fill = ppp_2020_0.01)) +
-    scale_fill_distiller(palette = "YlOrBr",  trans = "log1p",
-                         na.value = "transparent", breaks = c(0,25,100,1000,10000),  guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "Population Counts")) +
-    theme_classic() +
-    scale_x_continuous(expand=c(0,0)) +
-    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-    new_scale_fill() +
-    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-    geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
-    theme(legend.position = c(0.5,-0.12),
-          legend.direction = 'horizontal',
-          panel.border = element_blank(),
-          text = element_text(size=20),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(0,0,0,0),
-          legend.text = element_text(color = "black"),
-          axis.text.x  = element_blank(),
-          axis.text.y  = element_blank(),
-          axis.line = element_blank(),
-          axis.ticks = element_blank(),
-          plot.title = element_text(hjust = 0.1, vjust = -5), 
-          # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # legend.background = element_rect(fill = "#add8e7"),
-          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
+  geom_raster(data = df, aes(x = x, y = y,fill = Pop_0.1)) +
+  scale_fill_distiller(palette = "YlOrBr",  trans = "log1p",
+                       na.value = "transparent", breaks = c(0,25,100,1000,10000),  guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "Population Counts")) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  new_scale_fill() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
+  theme(legend.position = c(0.5,-0.12),
+        legend.direction = 'horizontal',
+        panel.border = element_blank(),
+        text = element_text(size=20),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
   labs(x = "", y = "", fill = "")
-odir <- "~/wildfire/WUI/data/02_analysis/SI/"
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
        filename = "pop_0.1_2020.pdf",
        device = "pdf", path = odir,
@@ -166,8 +153,7 @@ ggsave(plot = p,
 ## SI Fig.4,5
 ### read 1km WUI
 ```{r}
-idir <- "~/wildfire/WUI/data/01_GlobeLand30/"
-wd <- paste0(idir, '1km/')
+wd <- paste0(idir, 'Data/')
 files <- dir(path = wd, pattern = glob2rx('*rmNA_*.tif'))
 rList <- NULL
 WUI_area <- NULL
@@ -180,8 +166,8 @@ crs <- crs(rList[[3]])
 ### mapping global WUI, take 2000 as example
 ```{r}
 colorscale <- scale_fill_gradient2(low = "#800026", high = "#ffffcc", mid = "#fd8d3c", trans = "log1p",
-                                     na.value = "transparent", midpoint = log1p(0.4), breaks = seq(0,1,0.2), labels = scales::percent,
-                                     guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "WUI (%)"))
+                                   na.value = "transparent", midpoint = log1p(0.4), breaks = seq(0,1,0.2), labels = scales::percent,
+                                   guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "WUI (%)"))
 world <- filter(spData::world, region_un!="Antarctica")
 world <- st_transform(world, crs = wgs84)
 
@@ -202,42 +188,38 @@ w2000[w2000 == 0] <- NA
 df <- as.data.frame(w2000, xy = T)
 
 p <- ggplot() +
-    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-    geom_sf(data = world, fill = '#252525', color = NA) +
-    theme_classic() +
-    scale_x_continuous(expand=c(0,0)) +
-    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-    new_scale_fill() +
-    geom_raster(data = df, aes(x = x, y = y,fill = rmNA_WUI_2000_1km)) +
-    # blue palatte 
-    # scale_fill_stepsn(colors = c("#081d58","#01eaff","#7aff85","#ffe900","#d73027", "#800026"), na.value = "transparent",
-    # purple palatte
-    scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
-                      breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
-                      labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " "), 
-                      guide = guide_colorsteps(barwidth = 8, barheight = 0.8, title.position = "top", 
-                                               title.hjust = 0.5, title = expression('Wildland Urban Interface (%)'), label.hjust = 0.5)) +
-    geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
-    theme(legend.position = c(0.155, 0.12),
-          legend.direction = 'horizontal', 
-          legend.background = element_rect(fill = 'transparent'),
-          panel.border = element_blank(),
-          text = element_text(size = 10),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(0,0,0,0),
-          legend.text = element_text(color = "black"),
-          axis.text.x  = element_blank(),
-          axis.text.y  = element_blank(),
-          axis.line = element_blank(),
-          axis.ticks = element_blank(),
-          plot.title = element_text(hjust = 0.1, vjust = -5), 
-          # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # legend.background = element_rect(fill = "#add8e7"),
-          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))+
-    labs(x ="", y = "", fill = expression("WUI percentage")) 
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  new_scale_fill() +
+  geom_raster(data = df, aes(x = x, y = y,fill = rmNA_WUI_2000_1km)) +
+  # purple palatte
+  scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                    breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                    labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " "), 
+                    guide = guide_colorsteps(barwidth = 8, barheight = 0.8, title.position = "top", 
+                                             title.hjust = 0.5, title = expression('Wildland Urban Interface (%)'), label.hjust = 0.5)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  theme(legend.position = c(0.155, 0.12),
+        legend.direction = 'horizontal', 
+        legend.background = element_rect(fill = 'transparent'),
+        panel.border = element_blank(),
+        text = element_text(size = 10),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
+  labs(x ="", y = "", fill = expression("WUI percentage"))
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
        filename = "WUI_0.1_2000.pdf",
        device = "pdf", path = odir,
@@ -261,42 +243,43 @@ w2010[w2010 == 0] <- NA
 df <- as.data.frame(w2010, xy = T)
 
 p <- ggplot() +
-    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-    geom_sf(data = world, fill = '#252525', color = NA) +
-    theme_classic() +
-    scale_x_continuous(expand=c(0,0)) +
-    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-    new_scale_fill() +
-    geom_raster(data = df, aes(x = x, y = y,fill = rmNA_WUI_2010_1km)) +
-    # blue palatte 
-    # scale_fill_stepsn(colors = c("#081d58","#01eaff","#7aff85","#ffe900","#d73027", "#800026"), na.value = "transparent",
-    # purple palatte
-    scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
-                      breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
-                      labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " "), 
-                      guide = guide_colorsteps(barwidth = 8, barheight = 0.8, title.position = "top", 
-                                               title.hjust = 0.5, title = expression('Wildland Urban Interface (%)'), label.hjust = 0.5)) +
-    geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
-    theme(legend.position = c(0.155, 0.12),
-          legend.direction = 'horizontal', 
-          legend.background = element_rect(fill = 'transparent'),
-          panel.border = element_blank(),
-          text = element_text(size = 10),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(0,0,0,0),
-          legend.text = element_text(color = "black"),
-          axis.text.x  = element_blank(),
-          axis.text.y  = element_blank(),
-          axis.line = element_blank(),
-          axis.ticks = element_blank(),
-          plot.title = element_text(hjust = 0.1, vjust = -5), 
-          # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # legend.background = element_rect(fill = "#add8e7"),
-          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))+
-    labs(x ="", y = "", fill = expression("WUI percentage")) 
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  new_scale_fill() +
+  geom_raster(data = df, aes(x = x, y = y,fill = rmNA_WUI_2010_1km)) +
+  # blue palatte 
+  # scale_fill_stepsn(colors = c("#081d58","#01eaff","#7aff85","#ffe900","#d73027", "#800026"), na.value = "transparent",
+  # purple palatte
+  scale_fill_stepsn(colors = c("#54278f","#1d91c0", "#3eeded", "#aff96a", "#ecee31","#ef3b2c", "#cb181d","#67000d"), na.value = "transparent",
+                    breaks = c(seq(0.05, 0.25, 0.05), seq(0.3, 0.9, 0.1)), 
+                    labels = c("5", " ", " ", "20"," ", " ", " ", "50", " ", " ", "80", " "), 
+                    guide = guide_colorsteps(barwidth = 8, barheight = 0.8, title.position = "top", 
+                                             title.hjust = 0.5, title = expression('Wildland Urban Interface (%)'), label.hjust = 0.5)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  theme(legend.position = c(0.155, 0.12),
+        legend.direction = 'horizontal', 
+        legend.background = element_rect(fill = 'transparent'),
+        panel.border = element_blank(),
+        text = element_text(size = 10),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # legend.background = element_rect(fill = "#add8e7"),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))+
+  labs(x ="", y = "", fill = expression("WUI percentage"))
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
        filename = "WUI_0.1_2010.pdf",
        device = "pdf", path = odir,
@@ -307,22 +290,40 @@ ggsave(plot = p,
 
 ## SI Fig.6
 ```{r}
-wp2020 <- aggregate(WpList[[3]], fact=c(10,10)) %>% 
-    projectRaster(res = c(0.1,0.1), crs = crs)
+# projecy downloaded populaton data to 0.01°
+# idir <- "path to WorldPop 1km data"
+# files <- dir(idir, full.names = T, pattern = glob2rx('*p_ppp_*.tif'))
+# names <- dir(idir)
+# pList <- NULL
+# resample population to align WUI
+# for(i in 1:length(files)){
+  # aggeragate <- paste0('gdalwarp -t_srs "', wgs84, '" -r bilinear -tap -tr 0.01 0.01 -co COMPRESS=LZW -multi -overwrite -dstnodata 0 -ot Float32 ', files[i], ' ', idir, 'p_', names[i])
+  # system(aggeragate)
+  # pList[[i]] <- raster(files[i])
+# } 
+cpList <- NULL
+for(i in 1:3){
+  cpList[[i]] <- crop(pList[[i]], rList[[i]])
+}
+wp2020 <- pop * rList[[3]] 
+wp2020 <- wp2020 %>%
+  aggregate(fact=c(10,10)) %>% 
+  projectRaster(res = c(0.1,0.1), crs = crs)
 wp2020[wp2020 == 0] <- NA
 df <- as.data.frame(wp2020, xy = T)
 
 colorscale <- scale_fill_gradient2(low = "#800026", high = "#ffffcc", mid = "#fd8d3c", trans = "log1p",
-                                     na.value = "transparent", midpoint = log1p(100), breaks = c(0,25,100,1000,10000), labels = scales::percent,
-                                     guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "Population in WUI"))
+                                   na.value = "transparent", midpoint = log1p(100), breaks = c(0,25,100,1000,10000), labels = scales::percent,
+                                   guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "Population in WUI"))
 colorscale <- scale_fill_gradient2(low = "#800026", high = "#ffffcc", mid = "#fd8d3c", trans = "log1p",
-                                     na.value = "transparent", midpoint = log1p(100), breaks = c(0,25,100,1000,10000), 
-                                     guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "WUI covered population counts"))
+                                   na.value = "transparent", midpoint = log1p(100), breaks = c(0,25,100,1000,10000), 
+                                   guide = guide_colorbar(barwidth = 20, barheight = 1, title.position = "top", title.hjust = 0.5, title = "WUI covered population counts"))
 
 world <- filter(spData::world, region_un!="Antarctica")
 world <- st_transform(world, crs = crs)
-wd <- "~/wildfire/WUI/data/00_spatial/Blue-Earth-Bathymetry/"
-bath <- raster(paste0(wd, "Blue-Earth-Bathymetry.tif"))
+
+# read ocean bottom data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
 
 # crop and resample data to align main result
 bath2 <- crop(bath, wp2020)
@@ -334,57 +335,55 @@ bath3[bath3 > 0] <- NA
 # get dataframe
 df_b <- as.data.frame(bath3, xy = T)
 p <- ggplot() +
-    geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-    scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-    geom_sf(data = world, fill = '#252525', color = NA) +
-    theme_classic() +
-    scale_x_continuous(expand=c(0,0)) +
-    scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-    new_scale_fill() +
-    geom_raster(data = df, aes(x = x, y = y,fill = layer)) +
-    # blue palatte 
-    # scale_fill_stepsn(colors = c('#01EAFF',), na.value = "transparent",
-    # purple palatte
-    scale_fill_stepsn(colors = c('#005B9A','#01EAFF','#91FDA8','#00CCFF','#47A8FF','#8880DF','#AB52A9','#B02066'), na.value = "transparent",
-                      breaks = c(100,500,1000,2000,5000,7000,10000), labels = c('100', '', '1,000', '', '5,000','','10,000'),
-                      guide = guide_colorsteps(barwidth = 8, barheight = 0.5, title.position = "top", 
-                                               title.hjust = 0.5, title = expression('Population in WUI'), label.hjust = 0.5)) +
-    geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
-    theme(legend.position = c(0.155, 0.12),
-          legend.direction = 'horizontal', 
-          legend.background = element_rect(fill = 'transparent'),
-          panel.border = element_blank(),
-          text = element_text(size = 7),
-          legend.margin=margin(0,0,0,0),
-          legend.box.margin=margin(0,0,0,0),
-          legend.text = element_text(color = "black"),
-          axis.text.x  = element_blank(),
-          axis.text.y  = element_blank(),
-          axis.line = element_blank(),
-          axis.ticks = element_blank(),
-          plot.title = element_text(hjust = 0.1, vjust = -5), 
-          # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-          # legend.background = element_rect(fill = "#add8e7"),
-          plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  new_scale_fill() +
+  geom_raster(data = df, aes(x = x, y = y,fill = layer)) +
+  # blue palatte 
+  # scale_fill_stepsn(colors = c('#01EAFF',), na.value = "transparent",
+  # purple palatte
+  scale_fill_stepsn(colors = c('#005B9A','#01EAFF','#91FDA8','#00CCFF','#47A8FF','#8880DF','#AB52A9','#B02066'), na.value = "transparent",
+                    breaks = c(100,500,1000,2000,5000,7000,10000), labels = c('100', '', '1,000', '', '5,000','','10,000'),
+                    guide = guide_colorsteps(barwidth = 8, barheight = 0.5, title.position = "top", 
+                                             title.hjust = 0.5, title = expression('Population in WUI'), label.hjust = 0.5)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  theme(legend.position = c(0.155, 0.12),
+        legend.direction = 'horizontal', 
+        legend.background = element_rect(fill = 'transparent'),
+        panel.border = element_blank(),
+        text = element_text(size = 7),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black"),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # legend.background = element_rect(fill = "#add8e7"),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in"))
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
        filename = "WUI_covered_pop_2020.pdf",
        device = "pdf", path = odir,
-      width = 7, height = 5, units = "in",
+       width = 7, height = 5, units = "in",
        dpi = 320)
 
 ```
 
 
-
 ## SI Fig.7
 ```{r}
-
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
-fwrite(df, paste0(odir, "WUI_region.csv"))
-
-df <- fread(paste0(odir, "WUI_region.csv"))
+df <- fread(paste0(idir, "Data/SI/WUI_region.csv"))
+region <- rgdal::readOGR(paste0(idir, "Data/SI/basisRegion_union.shp")) %>%
+  sf::st_as_sf()
 mypal = rev(pal_npg("nrc", alpha = 0.7)(3))
 pW <- ggplot(df[df$id != 0, ])+
   geom_bar(aes(x=factor(id,c(1:14)),y = WUI / 100000, fill = as.factor(year), group = year), stat = 'identity', position="dodge") +
@@ -399,102 +398,70 @@ pW <- ggplot(df[df$id != 0, ])+
         axis.title.y = element_text(size = 7),
         axis.text.y = element_text(size = 6),
         axis.text.x = element_text(size = 7))
-```
 
-```{r}
-
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
-fwrite(Wp, paste0(odir, "WUI_covered_pop_global.csv"))
-
-dList <- NULL
-for(i in 1:3){
-  dList[[i]] <- exact_extract(WpList[[i]], region, fun = 'sum') %>%
-  cbind(REGION = region$ID) %>%
-  as.data.frame() %>%
-  mutate(year = years[i]) 
-}
-df <- bind_rows(dList)
-names(df) <- c("WUI_covered_pop", "id", "year")
-Wp <- Wp[,c(1,3,2)]
-df <- bind_rows(Wp, df)
-fwrite(df, paste0(odir, "WUI_covered_pop.csv"))
-
-df <- fread(paste0(odir, "WUI_covered_pop.csv"))
+df <- fread(paste0(idir, "Data/SI/WUI_covered_pop.csv"))
 pWp <- ggplot(df[df$id != 0,])+
-    geom_bar(aes(x=factor(id,c(1:14)),y = WUI_covered_pop / 100000, fill = as.factor(year), group = year), stat = 'identity', position="dodge") +
-    scale_x_discrete(labels = region$Acronyms) + 
-    scale_y_continuous(expression(name = 'Population in WUI ' (10 ^ {6})), expand = c(0,0)) + 
-    scale_fill_manual(values = mypal, guide_legend(title = '')) +
-    theme_classic() +
-    labs(x = "") +
-    theme(legend.position = 'none',
-          axis.line = element_line(linewidth = 0.2),
-          axis.ticks = element_line(linewidth = 0.2),
-          axis.title.y = element_text(size = 7),
-          axis.text.y = element_text(size = 6),
-          axis.text.x = element_text(size = 7))
+  geom_bar(aes(x=factor(id,c(1:14)),y = WUI_covered_pop / 100000, fill = as.factor(year), group = year), stat = 'identity', position="dodge") +
+  scale_x_discrete(labels = region$Acronyms) + 
+  scale_y_continuous(expression(name = 'Population in WUI ' (10 ^ {6})), expand = c(0,0)) + 
+  scale_fill_manual(values = mypal, guide_legend(title = '')) +
+  theme_classic() +
+  labs(x = "") +
+  theme(legend.position = 'none',
+        axis.line = element_line(linewidth = 0.2),
+        axis.ticks = element_line(linewidth = 0.2),
+        axis.title.y = element_text(size = 7),
+        axis.text.y = element_text(size = 6),
+        axis.text.x = element_text(size = 7))
 
 p <- plot_grid(pW, pWp, ncol = 1, align = "v")
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI/"
+
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
-       filename = "WUI_WUI_population_region.pdf",
+       filename = "WUI_PopinWUI_region.pdf",
        device = "pdf", path = odir,
        width = 180, height = 150, units = "mm",
        dpi = 320)
 ```
 
-## SI Fig.8-9
+## SI Fig.8
+### ocean bottom data
 ```{r}
-# 2000-2010
-delta <- rList[[2]] - rList[[1]]
-odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
-writeRaster(delta, filename = paste0(odir, "delta_10-00.tif"), overwrite = T)
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = wgs84)
 
-#Convert raster to dataframe
-delta <- aggregate(delta, fact = c(50, 50))
-delta[delta == 0] <- NA
-df <- as.data.frame(delta, xy=T)
-names(df) <- c('x', 'y', 'delta')
-d <- filter(df, !is.na(delta))
-natural_breaks(12, d["delta"])
-my_at <- c(-1, -0.015, -0.01, -0.005, 0.0, 0.001, 0.005, 0.015, 0.03, 0.05, 1)
-df$valueDiscr <- cut(df$delta,
-                     breaks = my_at, right = T)
+# read original data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds")) %>% rast()
+
 # crop and resample data to align main result
-bath2 <- crop(bath, delta)
-bath3 <- resample(bath2, delta)
+bath2 <- crop(bath, world)
+bath3 <- project(bath2, res = c(0.1, 0.1), wgs84)
 
 # remove terrestrial data
 bath3[bath3 > 0] <- NA
 
 # get dataframe
 df_b <- as.data.frame(bath3, xy = T)
+names(df_b)<-c('x','y','value')
+```
 
-cols1 <- rev(c(rev(c('#feedde','#fdd0a2','#fdae6b','#fd8d3c','#e6550d','#a63603')),'#f2f0f7','#cbc9e2','#9e9ac8','#756bb1'))
+### main plot 
+```{r}
+random_rast <- fread(paste0(idir, 'Data/SI/startified_random_sample_locations.csv'))
+
 p <- ggplot() +
-  geom_sf(data = world, fill = '#252525', color = NA) +
-  geom_raster(data = df, aes(x = x, y = y,fill = valueDiscr)) +
-  theme_classic() +
-  scale_fill_manual(values = cols1, na.translate = F, 
-                    labels = c('', '-1.5', '-1', ' -0.5', '    0   ', '0.1', '0.5', '1.5', '   3', '   5', ''),
-                    guide = guide_legend(keywidth = 2, keyheight = 0.6, nrow = 1, 
-                                         label.position = "bottom", title.position = "top",
-                                         legend.spacing.x = unit(0.7, 'cm'),
-                                         title = "WUI decreased(%)           WUI increased(%)",
-                                         title.hjust = 0.45,
-                                         label.hjust = -4)) +
-  scale_x_continuous(expand=c(0,0)) +
-  scale_y_continuous(expand=c(0,0)) +
-  new_scale_fill() +
-  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = value)) +
   scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
-  # borders(colour = "black", size = 0.3, fill = rgb(0.5,0.5,0.5, 0.15), xlim = c(-180, 180), ylim = c(-61, 90)) +
-  # coord_quickmap(expand = FALSE, xlim = c(-180, 180), ylim = c(-61, 90)) +
-  theme(legend.position = c(0.5,-0.15),
-        legend.direction = 'horizontal',
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  theme_classic() +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  theme(legend.position = c(0.155, 0.12),
+        legend.direction = 'horizontal', 
+        legend.background = element_rect(fill = 'transparent'),
         panel.border = element_blank(),
-        text = element_text(size=20),
+        text = element_text(size = 10),
         legend.margin=margin(0,0,0,0),
         legend.box.margin=margin(0,0,0,0),
         legend.text = element_text(color = "black"),
@@ -503,32 +470,225 @@ p <- ggplot() +
         axis.line = element_blank(),
         axis.ticks = element_blank(),
         plot.title = element_text(hjust = 0.1, vjust = -5), 
-        plot.margin= grid::unit(c(0, 0.2, 0.5, 0), "in")) +
-  labs(x ="", y = "") 
+        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
+        # legend.background = element_rect(fill = "#add8e7"),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) +
+  labs(x ="", y = "", fill = expression("WUI percentage")) +
+  geom_point(data = random_rast[1:6,], mapping = aes(x = x, y = y), shape = 1, col = '#1a9641', stroke = 0.5) +
+  geom_point(data = random_rast[7:12,], mapping = aes(x = x, y = y), shape = 1, col = '#d7191c', stroke = 0.5) +
+  geom_point(data = random_rast[1:6,], mapping = aes(x = x, y = y), col = '#1a9641', size = 0.2) +
+  geom_point(data = random_rast[7:12,], mapping = aes(x = x, y = y), col = '#d7191c', size = 0.2) 
 
-odir <- "~/wildfire/WUI/data/02_analysis/SI"
+odir <- paste0(idir, "Figure/SI/")
 ggsave(plot = p,
-       filename = "SI_10-00.pdf",
+       filename = "SI_sample_locations.pdf",
        device = "pdf", path = odir,
-       width = 15, height = 10, units = "in",
+       width = 7, height = 5, units = "in",
        dpi = 320)
 
 
-# 2010-2020
-delta <- rList[[3]] - rList[[2]]
-odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
-writeRaster(delta, filename = paste0(odir, "delta_20-10.tif"), overwrite = T)
+```
 
-#Convert raster to dataframe
-delta <- aggregate(delta, fact = c(50, 50))
+
+### mapping sample regions
+```{r}
+for(i in 1:12){
+  load(paste0(idir, "Data/SI/sampleData_", i, ".Rdata"))
+  if(length(sample_f$longitude) > 0) {
+  pList[[i]] <- ggplot() +
+    
+    geom_tile(df, mapping = aes(x = x, y = y, fill = type)) +
+    geom_tile_pattern(df_W, mapping = aes(x = x, y = y, pattern = type, fill = type),
+                      pattern_color = NA, pattern_fill = "#de2d26",
+                      pattern_angle = 45, pattern_spacing = 0.01,
+                      pattern_key_scale_factor = 1) +
+    scale_pattern_manual(values = c(WUI = "stripe", urban = 'none', wildlans = 'none')) +
+    scale_fill_manual(values = c('wildland' = '#2ca25f', 'urban' = '#fec44f', 'WUI' = 'transparent')) +
+    coord_sf(crs = crs(urban)) +
+    geom_point(sample_f, mapping = aes(x = x, y = y), col = 'red', size = 0.5, stroke = 0.1) +
+    theme_bw() +
+    scale_x_continuous(expand = c(0,0), breaks = c(random_rast[i,]$x - 0.04, random_rast[i,]$x, random_rast[i,]$x + 0.04), limits = c(ext(sample_u)[1],ext(sample_u)[2])) +
+    scale_y_continuous(expand = c(0,0), breaks = c(random_rast[i,]$y - 0.04, random_rast[i,]$y, random_rast[i,]$y + 0.04), limits = c(ext(sample_u)[3],ext(sample_u)[4])) +
+    labs(x = '', y = '', fill = '') + 
+    theme(panel.grid = element_blank(), 
+          axis.text.y = element_text(angle = 90, hjust = 0.5),
+          plot.margin = grid::unit(c(0.1, 0.1, 0, 0), "in"),
+          axis.text = element_text(size = 6), 
+          legend.position = 'none')
+} else{
+  pList[[i]] <- ggplot() +
+    
+    geom_tile(df, mapping = aes(x = x, y = y, fill = type)) +
+    geom_tile_pattern(df_W, mapping = aes(x = x, y = y, pattern = type, fill = type),
+                      pattern_color = NA, pattern_fill = "#de2d26",
+                      pattern_angle = 45, pattern_spacing = 0.01,
+                      pattern_key_scale_factor = 1) +
+    scale_pattern_manual(values = c(WUI = "stripe", urban = 'none', wildlans = 'none')) +
+    scale_fill_manual(values = c('wildland' = '#2ca25f', 'urban' = '#fec44f', 'WUI' = 'transparent')) +
+    coord_sf(crs = crs(urban)) +
+    theme_bw() +
+    scale_x_continuous(expand = c(0,0), breaks = c(random_rast[i,]$x - 0.04, random_rast[i,]$x, random_rast[i,]$x + 0.04), limits = c(ext(sample_u)[1],ext(sample_u)[2])) +
+    scale_y_continuous(expand = c(0,0), breaks = c(random_rast[i,]$y - 0.04, random_rast[i,]$y, random_rast[i,]$y + 0.04), limits = c(ext(sample_u)[3],ext(sample_u)[4])) +
+    labs(x = '', y = '', fill = '') + 
+    theme(panel.grid = element_blank(), 
+          axis.text.y = element_text(angle = 90, hjust = 0.5),
+          plot.margin = grid::unit(c(0.1, 0.1, 0, 0), "in"),
+          axis.text = element_text(size = 6), 
+          legend.position = 'none')
+}
+}
+
+p <- plot_grid(plotlist = pList)
+
+odir <- paste0(idir, "Figure/SI/")
+ggsave(plot = p,
+       filename = "SI_sample.pdf",
+       device = "pdf", path = odir,
+       width = 200, height = 150, units = "mm",
+       dpi = 320)
+```
+
+
+## SI Fig.9
+### CA mapping (FRAP)
+Reference data can be downloaded from [USFS](https://silvis.forest.wisc.edu/data/wui-change/) (data linked with Radeloff 2018) and [FRAP](https://www.fire.ca.gov/Home/What-We-Do/Fire-Resource-Assessment-Program/GIS-Mapping-and-Data-Analytics). 
+```{r}
+# read outline
+ca <- sf::st_read(paste0(idir, 'Data/SI/California_NAD2.shp'))
+
+# plot FRAP
+# first use ArcGIS or other software to read downloaded .gdb file, and export.tif file
+ca_frap <- rast(paste0(idir, 'Data/SI/WUI_FRAP.tif'))       
+# sf::st_layers(paste0(wd, 'WUI12_3.gdb'))
+# frap_table <- sf::st_read(paste0(wd, 'WUI12_3.gdb'), layer = 'VAT_WUI12_3') 
+
+df_frap <- left_join(as.data.frame(ca_frap, xy = T), 
+                     frap_table, by = c('WUI_FRAP' = 'Value')) %>%
+  filter(WUI_NUM == 3 | WUI_NUM == 4)
+p_frap <- ggplot() +
+  geom_sf(data = ca, fill = NA, alpha = 0.5) + 
+  geom_tile(data = df_frap, mapping = aes(x = x, y = y, fill = as.character(WUI_NUM))) +
+  theme_void()+
+  scale_fill_manual(values = c('3' = '#fa9fb5', '4' = '#fde0dd'), 
+                    labels = c('intermix', 'interface'), 
+                    guide = guide_legend(keywidth = 0.2, keyheight = 0.2)) +
+  labs(x ="", y = "", fill = 'WUI-FRAP') +
+  ggspatial::annotation_scale(height = unit(1, "mm"), line_width = 0.2, text_cex = 0.5) +
+  ggspatial::annotation_north_arrow(height = unit(5, "mm"), width = unit(5, "mm"), 
+                                    location = 'rt', style = north_arrow_fancy_orienteering(text_size = 5, line_width = 0.5)) +
+  theme(legend.position = c(0.9,0.75), 
+        legend.text = element_text(size = 4), 
+        legend.title = element_text(size = 5),
+        legend.background = element_blank())
+
+```
+
+### CA mapping (USFS)
+```{r}
+# load data
+# ca_usfs <- sf::st_read(paste0(wd, 'CA_USFS/CA_wui_block_1990_2020_change.shp'))
+
+# plot ref
+ca_usfs_wui <- st_transform(ca_usfs, crs = crs(ca_frap)) %>%
+  filter(WUIFLAG202 != 0)
+p_usfs <- ggplot() + 
+  geom_sf(data = ca, fill = NA, alpha = 0.5) + 
+  geom_sf(data = ca_usfs_wui, color = NA, mapping = aes(fill = as.character(WUIFLAG202))) +
+  theme_void() +
+  scale_fill_manual(values = c('1' = '#2b8cbe', '2' = '#a6bddb'), 
+                    labels = c('intermix', 'interface'), 
+                    guide = guide_legend(keywidth = 0.2, keyheight = 0.2)) +
+  labs(x ="", y = "", fill = 'WUI-USFS') +
+  ggspatial::annotation_scale(height = unit(1, "mm"), line_width = 0.2, text_cex = 0.5) +
+  ggspatial::annotation_north_arrow(height = unit(5, "mm"), width = unit(5, "mm"), 
+                                    location = 'rt', style = north_arrow_fancy_orienteering(text_size = 5, line_width = 0.5)) +
+  theme(legend.position = c(0.8,0.75), 
+        legend.text = element_text(size = 4), 
+        legend.title = element_text(size = 5),
+        legend.background = element_blank()) 
+```
+
+### CA mapping (Globe-WUI)
+```{r}
+# 2020
+ca_wui <- rast(paste0(idir, 'Data/SI/CA_GlobalWUI_2020.tif'))
+df_ca <- as.data.frame(ca_wui, xy = T) %>%
+  filter(CA_GlobalWUI_2020 == 1)
+p_obs_20 <- ggplot() +
+  geom_sf(data = ca, fill = NA, alpha = 0.5) + 
+  geom_tile(data = df_ca, mapping = aes(x = x, y = y, fill = as.character(CA_GlobalWUI_2020))) +
+  scale_fill_manual(values = c('1' = '#fdd0a2'), 
+                    labels = c('WUI'), 
+                    guide = guide_legend(keywidth = 0.2, keyheight = 0.2)) +
+  labs(x ="", y = "", fill = 'WUI-Globe') +
+  theme_void() +
+  ggspatial::annotation_scale(height = unit(1, "mm"), line_width = 0.2, text_cex = 0.5) +
+  ggspatial::annotation_north_arrow(height = unit(5, "mm"), width = unit(5, "mm"), 
+                                    location = 'rt', style = north_arrow_fancy_orienteering(text_size = 5, line_width = 0.5)) +
+  theme(legend.position = c(0.8,0.75), 
+        legend.text = element_text(size = 4), 
+        legend.title = element_text(size = 5),
+        legend.background = element_blank()) 
+
+# 2010
+ca_wui <- rast(paste0(idir, 'Data/SI//CA_GlobalWUI_2010.tif'))
+df_ca <- as.data.frame(ca_wui, xy = T) %>%
+  filter(CA_GlobalWUI_2010 == 1)
+p_obs_10 <- ggplot() +
+  geom_sf(data = ca, fill = NA, alpha = 0.5) + 
+  geom_tile(data = df_ca, mapping = aes(x = x, y = y, fill = as.character(CA_GlobalWUI_2010))) +
+  scale_fill_manual(values = c('1' = '#fdd0a2'), 
+                    labels = c('WUI'), 
+                    guide = guide_legend(keywidth = 0.2, keyheight = 0.2)) +
+  labs(x ="", y = "", fill = 'WUI-Globe') +
+  theme_void() +
+  ggspatial::annotation_scale(height = unit(1, "mm"), line_width = 0.2, text_cex = 0.5) +
+  ggspatial::annotation_north_arrow(height = unit(5, "mm"), width = unit(5, "mm"), 
+                                    location = 'rt', style = north_arrow_fancy_orienteering(text_size = 5, line_width = 0.5)) +
+  theme(legend.position = c(0.8,0.75), 
+        legend.text = element_text(size = 4), 
+        legend.title = element_text(size = 5),
+        legend.background = element_blank()) 
+
+p_all <- plot_grid(
+  p_obs_20, p_usfs, p_obs_10, p_frap,
+  labels = c('a', 'b', 'c', 'd'),
+  nrow = 2,
+  align="hv"
+)
+
+ggsave(plot = p_all,
+       filename = "SI_CA_combine.pdf",
+       device = "pdf", path = odir,
+       width = 100, height = 150, units = "mm",
+       dpi = 320)
+```
+
+
+## SI Fig.10
+### prepare change data
+```{r}
+odir <- "~/wildfire/WUI/GlobalWUI/Data/SI"
+delta <- raster(paste0(odir, "delta_10-00.tif"))
+
+# 0.1°version
+delta <- aggregate(delta, fact = c(10, 10))
 delta[delta == 0] <- NA
 df <- as.data.frame(delta, xy=T)
 names(df) <- c('x', 'y', 'delta')
-d <- filter(df, !is.na(delta))
-natural_breaks(12, d["delta"])
-my_at <- c(-1, -0.1, -0.05, 0.0, 0.005, 0.01, 0.015, 0.02, 0.05, 0.1, 1)
+# d <- filter(df, !is.na(delta))
+# natural_breaks(12, d["delta"])
+my_at <- c(-1, -0.05, -0.03, -0.01, -0.005, 0.005, 0.01, 0.03, 0.05, 0.1, 0.3, 1)
 df$valueDiscr <- cut(df$delta,
                      breaks = my_at, right = T)
+```
+
+### ocean bottom data
+```{r}
+# read original data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
+
 # crop and resample data to align main result
 bath2 <- crop(bath, delta)
 bath3 <- resample(bath2, delta)
@@ -538,35 +698,47 @@ bath3[bath3 > 0] <- NA
 
 # get dataframe
 df_b <- as.data.frame(bath3, xy = T)
+```
 
-cols1 <- rev(c(rev(c('#feedde','#fdd0a2','#fdae6b','#fd8d3c','#f16913','#d94801','#8c2d04')),'#cbc9e2','#9e9ac8','#6a51a3'))
+### main plot
+```{r}
+# zoomin area annotation
+points <-cbind(x = c(-82, 27.5, 114), y = c(36, -26, 22.75)) %>%
+  as.data.frame()
+
+# green-pink-purple
+cols1 <- rev(c(rev(c('#fcc5c0','#fa9fb5','#f768a1','#dd3497','#ae017e','#7a0177')),'transparent','#a1d99b','#74c476','#31a354','#006d2c'))
+
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = crs(delta))
 p <- ggplot() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
   geom_sf(data = world, fill = '#252525', color = NA) +
-  geom_raster(data = df, aes(x = x, y = y,fill = valueDiscr)) +
-  theme_classic() +
-  scale_fill_manual(values = cols1, na.translate = F, 
-                    labels = c('', '-10', '-5', '    0   ', '0.5', '1', '1.5', '   2', '   5', '1'),
-                    guide = guide_legend(keywidth = 2, keyheight = 0.6, nrow = 1, 
-                                         label.position = "bottom", title.position = "top",
-                                         legend.spacing.x = unit(0.7, 'cm'),
-                                         title = "WUI decreased(%)           WUI increased(%)",
-                                         title.hjust = 0.45,
-                                         label.hjust = -4)) +
   scale_x_continuous(expand=c(0,0)) +
   scale_y_continuous(expand=c(0,0)) +
   new_scale_fill() +
-  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
-  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
-  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
-  # borders(colour = "black", size = 0.3, fill = rgb(0.5,0.5,0.5, 0.15), xlim = c(-180, 180), ylim = c(-61, 90)) +
-  # coord_quickmap(expand = FALSE, xlim = c(-180, 180), ylim = c(-61, 90)) +
-  theme(legend.position = c(0.5,-0.15),
+  geom_raster(data = df, aes(x = x, y = y,fill = valueDiscr)) +
+  theme_classic() +
+  scale_fill_manual(values = cols1, na.translate = F, 
+                    labels = c('    ', '  -5', '  -3','  -1', '-0.5', ' 0.5', '   1', '   3', '   5', '  10', '   30', ''),                 
+                    guide = guide_legend(nrow = 1, 
+                                         keywidth = 0.6, keyheight = 0.8,
+                                         label.position = "bottom", title.position = "top",
+                                         title = expression(Delta(WUI)~'(%)'),
+                                         title.hjust = 0.5,
+                                         label.hjust = -4)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  geom_point(data = points, aes(x=x,y=y), color = 'black', fill = '#addd8e', stroke = 0.5, shape = 21, size = 1) +
+  theme(legend.position = c(0.6,0.12),
         legend.direction = 'horizontal',
+        legend.spacing.x = unit(0, 'cm'),
+        legend.background = element_blank(), 
+        legend.title = element_text(size = 10),
         panel.border = element_blank(),
-        text = element_text(size=20),
         legend.margin=margin(0,0,0,0),
         legend.box.margin=margin(0,0,0,0),
-        legend.text = element_text(color = "black"),
+        legend.text = element_text(color = "black", size = 10),
         axis.text.x  = element_blank(),
         axis.text.y  = element_blank(),
         axis.line = element_blank(),
@@ -575,19 +747,750 @@ p <- ggplot() +
         plot.margin= grid::unit(c(0, 0.2, 0.5, 0), "in")) +
   labs(x ="", y = "") 
 
-odir <- "~/wildfire/WUI/data/02_analysis/SI"
+odir <-paste0(idir, "Figure/SI")
 ggsave(plot = p,
-       filename = "SI_20-10.pdf",
+       filename = "SI_10-00_0.1.pdf",
        device = "pdf", path = odir,
-       width = 15, height = 10, units = "in",
+       width = 7, height = 5, units = "in",
        dpi = 320)
 
 ```
 
-## SI Fig. 13
+
+## SI Fig.11
+### prepare change data
 ```{r}
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
-dis_2020 <- read.csv(paste0(odir, "M-C61_disToWUI_2020_regional.csv"))
+odir <- "~/wildfire/WUI/GlobalWUI/Data/SI"
+delta <- raster(paste0(odir, "delta_20-10.tif"))
+
+# 0.1°version
+delta <- aggregate(delta, fact = c(10, 10))
+delta[delta == 0] <- NA
+df <- as.data.frame(delta, xy=T)
+names(df) <- c('x', 'y', 'delta')
+# d <- filter(df, !is.na(delta))
+# natural_breaks(12, d["delta"])
+my_at <- c(-1, -0.05, -0.03, -0.01, -0.005, 0.005, 0.01, 0.03, 0.05, 0.1, 0.3, 1)
+df$valueDiscr <- cut(df$delta,
+                     breaks = my_at, right = T)
+```
+
+### ocean bottom data
+```{r}
+# read original data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
+
+# crop and resample data to align main result
+bath2 <- crop(bath, delta)
+bath3 <- resample(bath2, delta)
+
+# remove terrestrial data
+bath3[bath3 > 0] <- NA
+
+# get dataframe
+df_b <- as.data.frame(bath3, xy = T)
+```
+
+### main plot
+```{r}
+# zoomin area annotation
+points <-cbind(x = c(-82, 27.5, 114), y = c(36, -26, 22.75)) %>%
+  as.data.frame()
+
+# green-pink-purple
+cols1 <- rev(c(rev(c('#fcc5c0','#fa9fb5','#f768a1','#dd3497','#ae017e','#7a0177')),'transparent','#a1d99b','#74c476','#31a354','#006d2c'))
+
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = crs(delta))
+p <- ggplot() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  new_scale_fill() +
+  geom_raster(data = df, aes(x = x, y = y,fill = valueDiscr)) +
+  theme_classic() +
+  scale_fill_manual(values = cols1, na.translate = F, 
+                    labels = c('    ', '  -5', '  -3','  -1', '-0.5', ' 0.5', '   1', '   3', '   5', '  10', '   30', ''),                 
+                    guide = guide_legend(nrow = 1, 
+                                         keywidth = 0.6, keyheight = 0.8,
+                                         label.position = "bottom", title.position = "top",
+                                         title = expression(Delta(WUI)~'(%)'),
+                                         title.hjust = 0.5,
+                                         label.hjust = -4)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  geom_point(data = points, aes(x=x,y=y), color = 'black', fill = '#addd8e', stroke = 0.5, shape = 21, size = 1) +
+  theme(legend.position = c(0.6,0.12),
+        legend.direction = 'horizontal',
+        legend.spacing.x = unit(0, 'cm'),
+        legend.background = element_blank(), 
+        legend.title = element_text(size = 10),
+        panel.border = element_blank(),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black", size = 10),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        plot.margin= grid::unit(c(0, 0.2, 0.5, 0), "in")) +
+  labs(x ="", y = "") 
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = p,
+       filename = "SI_20-10_0.1.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+
+```
+
+## SI Fig.12-13
+### Function
+```{r}
+# The function that produces the colour matrix
+colmat <- function(nbreaks = 3, breakstyle = "quantile",
+                   upperleft = "#0096EB", upperright = "#820050", 
+                   bottomleft = "#BEBEBE", bottomright = "#FFE60F",
+                   xlab = "x label", ylab = "y label", plotLeg = TRUE,
+                   saveLeg = FALSE) {
+  # TODO - replace any tidyr, dplyr etc. functions with data.table #
+  library(tidyverse)
+  require(ggplot2)
+  require(classInt)
+  if (breakstyle == "sd") {
+    warning("SD breaks style cannot be used.\nWill not always return the correct number of breaks.\nSee classInt::classIntervals() for details.\nResetting to quantile",
+            call. = FALSE, immediate. = FALSE)
+    breakstyle <- "quantile"}
+  # The colours can be changed by changing the HEX codes for:
+  # upperleft, upperright, bottomleft, bottomright
+  # From http://www.joshuastevens.net/cartography/make-a-bivariate-choropleth-map/
+  # upperleft = "#64ACBE"; upperright = "#574249"; bottomleft = "#E8E8E8"; bottomright = "#C85A5A";
+  # upperleft = "#BE64AC"; upperright = "#3B4994"; bottomleft = "#E8E8E8"; bottomright = "#5AC8C8";
+  # upperleft = "#73AE80"; upperright = "#2A5A5B"; bottomleft = "#E8E8E8"; bottomright = "#6C83B5";
+  # upperleft = "#73AE80"; upperright = "#804D36"; bottomleft = "#E8E8E8"; bottomright = "#FEF287";
+  # upperleft = "#9972AF"; upperright = "#804D36"; bottomleft = "#E8E8E8"; bottomright = "#C8B35A";
+  # upperleft = "#DA8DC8"; upperright = "#697AA2"; bottomleft = "#E8E8E8"; bottomright = "#73BCA0";
+  # Similar to Teuling, Stockli, Seneviratnea (2011) [https://doi.org/10.1002/joc.2153]
+  # upperleft = "#F7900A"; upperright = "#993A65"; bottomleft = "#44B360"; bottomright = "#3A88B5";
+  # Viridis style
+  # upperleft = "#FEF287"; upperright = "#21908D"; bottomleft = "#E8F4F3"; bottomright = "#9874A1";
+  # Similar to Fjeldsa, Bowie, Rahbek 2012
+  # upperleft = "#34C21B"; upperright = "#595757"; bottomleft = "#FFFFFF";  bottomright = "#A874B8";
+  # Default from original source
+  # upperleft = "#0096EB"; upperright = "#820050"; bottomleft= "#BEBEBE"; bottomright = "#FFE60F";
+  my.data <- seq(0, 1, .01)
+  # Default uses terciles (Lucchesi and Wikle [2017] doi: 10.1002/sta4.150)
+  my.class <- classInt::classIntervals(my.data,
+                                       n = nbreaks,
+                                       style = breakstyle,
+  )
+  my.pal.1 <- classInt::findColours(my.class, c(upperleft, bottomleft))
+  my.pal.2 <- classInt::findColours(my.class, c(upperright, bottomright))
+  col.matrix <- matrix(nrow = 101, ncol = 101, NA)
+  for (i in 1:101) {
+    my.col <- c(paste(my.pal.1[i]), paste(my.pal.2[i]))
+    col.matrix[102 - i, ] <- classInt::findColours(my.class, my.col)
+  }
+  ## need to convert this to data.table at some stage.
+  col.matrix.plot <- col.matrix %>%
+    as.data.frame(.) %>% 
+    mutate("Y" = row_number()) %>%
+    mutate_at(.tbl = ., .vars = vars(starts_with("V")), .funs = list(as.character)) %>% 
+    pivot_longer(data = ., cols = -Y, names_to = "X", values_to = "HEXCode") %>% 
+    mutate("X" = as.integer(sub("V", "", .$X))) %>%
+    distinct(as.factor(HEXCode), .keep_all = TRUE) %>%
+    mutate(Y = rev(.$Y)) %>% 
+    dplyr::select(-c(4)) %>%
+    mutate("Y" = rep(seq(from = 1, to = nbreaks, by = 1), each = nbreaks),
+           "X" = rep(seq(from = 1, to = nbreaks, by = 1), times = nbreaks)) %>%
+    mutate("UID" = row_number())
+  # Use plotLeg if you want a preview of the legend
+  if (plotLeg) {
+    p <- ggplot(col.matrix.plot, aes(X, Y, fill = HEXCode)) +
+      geom_tile() +
+      scale_fill_identity() +
+      coord_equal(expand = FALSE) +
+      theme_void() +
+      theme(aspect.ratio = 1,
+            axis.title = element_text(size = 8, colour = "black",hjust = 0.5, 
+                                      vjust = 1),
+            axis.title.y = element_text(angle = 90, hjust = 0.5)) +
+      xlab(bquote(.(xlab) ~ '  0%' ~ symbol("\256") ~ '100%')) +
+      ylab(bquote(.(ylab) ~ '  0%' ~ symbol("\256") ~ '100%'))
+    print(p)
+    assign(
+      x = "BivLegend",
+      value = p,
+      pos = .GlobalEnv
+    )
+  }
+  # Use saveLeg if you want to save a copy of the legend
+  if (saveLeg) {
+    ggsave(filename = "bivLegend.pdf", plot = p, device = "pdf",
+           path = "./", width = 4, height = 4, units = "in",
+           dpi = 300)
+  }
+  seqs <- seq(0, 100, (100 / nbreaks))
+  seqs[1] <- 1
+  col.matrix <- col.matrix[c(seqs), c(seqs)]
+  attr(col.matrix, "breakstyle") <- breakstyle
+  attr(col.matrix, "nbreaks") <- nbreaks
+  return(col.matrix)
+}
+
+# Function to assign colour-codes to raster data
+# As before, by default assign tercile breaks
+# fixed breaks
+bivariate.map <- function(rasterx, rastery, colourmatrix = col.matrix,
+                          export.colour.matrix = TRUE, batch,
+                          outname = paste0("colMatrix_rasValues", names(rasterx))) {
+  # TO DO - replace raster with terra #
+  require(raster)
+  require(classInt)
+  # export.colour.matrix will export a data.frame of rastervalues and RGB codes 
+  # to the global environment outname defines the name of the data.frame
+  quanx <- getValues(rasterx)
+  # remove 0 value
+  # quanx[quanx == 0] <- NA
+  tempx <- data.frame(quanx, quantile = rep(NA, length(quanx)))
+  # brks <- with(tempx, classIntervals(quanx,
+  #                                   n = attr(colourmatrix, "nbreaks"),
+  #                                   style = attr(colourmatrix, "breakstyle"))$brks)
+  brks <- with(tempx, classIntervals(quanx, 
+                                     fixedBreaks= c(-1, -0.05,-0.01, 0, 0.01, 0.05, 1), 
+                                     style = 'fixed')$brks)
+  ## Add (very) small amount of noise to all but the first break
+  ## https://stackoverflow.com/a/19846365/1710632
+  brks[-1] <- brks[-1] + seq_along(brks[-1]) * .Machine$double.eps
+  r1 <- within(tempx, quantile <- cut(quanx,
+                                      breaks = brks,
+                                      labels = 2:length(brks),
+                                      include.lowest = TRUE))
+  quantr <- data.frame(r1[, 2])
+  quany <- getValues(rastery)
+  # remove 0 value
+  # quany[quany == 0] <- NA
+  tempy <- data.frame(quany, quantile = rep(NA, length(quany)))
+  # brksy <- with(tempy, classIntervals(quany,
+  #                                    n = attr(colourmatrix, "nbreaks"),
+  #                                    style = attr(colourmatrix, "breakstyle"))$brks)
+  brksy <- with(tempx, classIntervals(quany, 
+                                      fixedBreaks= c(-1, -0.05,-0.01, 0, 0.01, 0.05,1), 
+                                      style = 'fixed')$brks)
+  brksy[-1] <- brksy[-1] + seq_along(brksy[-1]) * .Machine$double.eps
+  r2 <- within(tempy, quantile <- cut(quany,
+                                      breaks = brksy,
+                                      labels = 2:length(brksy),
+                                      include.lowest = TRUE
+  ))
+  quantr2 <- data.frame(r2[, 2])
+  as.numeric.factor <- function(x) {
+    as.numeric(levels(x))[x]
+  }
+  col.matrix2 <- colourmatrix
+  cn <- unique(colourmatrix)
+  for (i in 1:length(col.matrix2)) {
+    ifelse(is.na(col.matrix2[i]),
+           col.matrix2[i] <- 1, col.matrix2[i] <- which(
+             col.matrix2[i] == cn
+           )[1]
+    )
+  }
+  col.matrix <- col.matrix2
+  col.matrix[2,] <- col.matrix2[7,]
+  col.matrix[3,] <- col.matrix2[6,]
+  col.matrix[4,] <- col.matrix2[5,]
+  col.matrix[5,] <- col.matrix2[4,]
+  col.matrix[6,] <- col.matrix2[3,]
+  col.matrix[7,] <- col.matrix2[2,]
+  col.matrix[1,] <- col.matrix[2,]
+  col.matrix[,1] <- col.matrix[,2]
+  # Export the colour.matrix to data.frame() in the global env
+  # Can then save with write.table() and use in ArcMap/QGIS
+  # Need to save the output raster as integer data-type
+  if (export.colour.matrix) {
+    # create a dataframe of colours corresponding to raster values
+    exportCols <- as.data.frame(cbind(
+      as.vector(col.matrix2), as.vector(colourmatrix),
+      t(col2rgb(as.vector(colourmatrix)))
+    ))
+    # rename columns of data.frame()
+    colnames(exportCols)[1:2] <- c("rasValue", "HEX")
+    # Export to the global environment
+    assign(
+      x = outname,
+      value = exportCols,
+      pos = .GlobalEnv
+    )
+  }
+  # cols <- numeric(length(quantr[, 1]))
+  
+  # pb <- progress_bar$new(
+  #   format = "  progressing [:bar] :percent eta: :eta",
+  #   total = length(quantr[, 1]), clear = FALSE, width= 60)
+  # 
+  # for(i in 1:length(quantr[, 1])) {
+  #     a <- as.numeric.factor(quantr[i, 1])
+  #     b <- as.numeric.factor(quantr2[i, 1])
+  #     cols[i] <- as.numeric(col.matrix2[b, a])
+  #     pb$tick()
+  #   Sys.sleep(1 / 100)
+  # }
+  
+  require(doSNOW)
+  cores <- parallel::detectCores()
+  # cl <- makeSOCKcluster(cores/4)
+  cl <- makeSOCKcluster(10)
+  registerDoSNOW(cl)
+  
+  pb <- txtProgressBar(min = 1, max = batch, style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress=progress)
+  tab <- length(quantr[, 1]) / batch
+  result <- 
+    foreach(i=1:batch, .packages="dplyr", .options.snow=opts,
+            .combine='rbind') %dopar% {
+              cols <- NULL
+              
+              for(j in (1 + (i - 1 ) * tab): (i * tab)) {
+                a <- as.numeric.factor(quantr[j, 1])
+                b <- as.numeric.factor(quantr2[j, 1])
+                c <- r1[j, 1]
+                d <- r2[j, 1]
+                if (c == 0 & d == 0){
+                  cols[[j - (i - 1 ) * tab]] <- as.numeric(col.matrix[NA, NA]) %>%
+                    as.data.frame() %>%
+                    mutate(i = j) %>%
+                    unique() %>%
+                    as.data.frame()
+                } else{
+                  if(c == 0 & d > 0){
+                    a <- a + 1
+                  } else if (d == 0 & c > 0){
+                    b <- b + 1
+                  }
+                  cols[[j - (i - 1 ) * tab]] <- as.numeric(col.matrix[b, a]) %>%
+                    as.data.frame() %>%
+                    mutate(i = j) %>%
+                    as.data.frame()
+                }
+                
+                # cat(paste0(j, '\n'))
+              }
+              cols <- bind_rows(cols)
+              names(cols) <- c('color', 'i')
+              write.csv(cols, file = paste0("/project/public/temp_yx/delta/driver_table_bi/temp/cols_", i, ".csv"))
+              gc()
+            }
+  close(pb)
+  stopCluster(cl)
+  
+  colList <- NULL
+  file <- dir(path = "/project/public/temp_yx/delta/driver_table_bi/temp/")  
+  for(i in 1:length(file)){
+    colList[[i]] <- read.csv(paste0("/project/public/temp_yx/delta/driver_table_bi/temp/", file[i]))
+  }
+  cols <- bind_rows(colList) %>%
+    arrange(i) %>%
+    dplyr::select(color) %>%
+    unlist() %>%
+    as.numeric()
+  r <- rasterx
+  r[1:length(r)] <- cols
+  system("rm /project/public/temp_yx/delta/driver_table_bi/temp/*")
+  return(r)
+}
+```
+
+- Drawing
+### generate bivirate data
+```{r}
+# Create the colour matrix
+# generate 4 quadrant colour matrix
+# blue
+col.matrix1 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#64bbc2", upperright = "#2c81d4", bottomleft = "#b6d9d4",  bottomright = "#8eb2bf",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# green
+col.matrix2 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#b9dbc4", upperright = "#93b388", bottomleft = "#72cf87",  bottomright = "#5bbc25",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# orange
+col.matrix3 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#dfa222", upperright = "#eaa087", bottomleft = "#cabc86",  bottomright = "#e5d0c3",
+                      saveLeg = FALSE, plotLeg = FALSE)
+# purple
+col.matrix4 <- colmat(nbreaks = 3, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#a581c6", upperright = "#d9bbd7", bottomleft = "#8f29db",  bottomright = "#d078c3",
+                      saveLeg = FALSE, plotLeg = FALSE)
+
+# create final colour matrix
+col.matrixD <- colmat(nbreaks = 6, breakstyle = "equal",
+                      xlab = "Urban", ylab = "Wildland", 
+                      upperleft = "#AEDFE1", upperright = "#4FBA67", bottomleft = "#5ACB96",  bottomright = "#2A5A5B",
+                      saveLeg = FALSE, plotLeg = FALSE)
+col.matrixD [2:4, 5:7] <- col.matrix4[2:4, 2:4]
+col.matrixD [2:4, 2:4] <- col.matrix2[2:4, 2:4]
+col.matrixD [5:7, 2:4] <- col.matrix1[2:4, 2:4]
+col.matrixD [5:7, 5:7] <- col.matrix3[2:4, 2:4]
+t <- col.matrixD[2,]
+col.matrixD[2,] <- col.matrixD[4,]
+col.matrixD[4,] <- t
+t <- col.matrixD[5,]
+col.matrixD[5,] <- col.matrixD[7,]
+col.matrixD[7,] <- t
+col.matrixD[1,] <- col.matrixD[2,]
+col.matrixD[,1] <- col.matrixD[,2]
+
+# get color code
+col.matrix2 <- col.matrixD
+cn <- unique(col.matrixD)
+for (i in 1:length(col.matrix2)) {
+  ifelse(is.na(col.matrix2[i]),
+         col.matrix2[i] <- 1,
+         col.matrix2[i] <- which(col.matrix2[i] == cn)[1])
+}
+colorDF <- as.data.frame(cbind(as.vector(col.matrix2), as.vector(col.matrixD))) %>%
+  distinct()
+colnames(colorDF)[1:2] <- c("rasValue", "HEX")
+colL <- colorDF$HEX
+names(colL) <- as.character(colorDF$rasValue)
+
+col.matrix.plot <- col.matrixD %>%
+  as.data.frame(.) %>% 
+  mutate("Y" = row_number()) %>%
+  mutate_at(.tbl = ., .vars = vars(starts_with("V")), .funs = list(as.character)) %>% 
+  pivot_longer(data = ., cols = -Y, names_to = "X", values_to = "HEXCode") %>% 
+  mutate("X" = as.integer(sub("V", "", .$X))) %>%
+  distinct(as.factor(HEXCode), .keep_all = TRUE) %>%
+  mutate(Y = rev(.$Y)) %>% 
+  dplyr::select(-c(4)) %>%
+  mutate("Y" = rep(seq(from = 1, to = 6, by = 1), each = 6),
+         "X" = rep(seq(from = 1, to = 6, by = 1), times = 6)) %>%
+  mutate("UID" = row_number())
+colR <- raster(ncols=6,nrows=6)
+values(colR) <- col.matrix.plot$UID
+df_col <- as.data.frame(colR,xy=T)
+table <- col.matrix.plot$HEXCode%>%as.character()
+names(table) <- col.matrix.plot$UID
+BivLegend <- ggplot() +
+  geom_raster(data = df_col, aes(x = x, y = y, fill = as.character(layer))) +
+  scale_fill_manual(name = "", values = table, labels = "", na.translate = FALSE) +
+  theme_classic() +
+  theme(text = element_text(size = 10, colour = "black")) +
+  # coord_quickmap(expand = FALSE, xlim = extent(r)[1:2], ylim = extent(r)[3:4]) +
+  theme(legend.position = "none",
+        plot.background = element_rect(color = "transparent", fill = "transparent"),
+        # plot.background = element_rect(fill ="#2E2C2C", colour = "#2E2C2C"),
+        panel.background = element_rect(color = "transparent", fill = "transparent"),
+        axis.title = element_text(
+          size = 10,
+          colour = "black",
+          hjust = 0.5,
+          vjust = 1
+        ),
+        axis.text.x = element_text(size = 6, colour = 'black', margin = margin(t = 1, r = 0, b = 0, l = 0)),
+        axis.text.y = element_text(angle = 90, hjust = 0.5, size = 6, colour = 'black', margin = margin(t = 0, r = 5, b = 0, l = 0)),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
+  coord_fixed(ratio = 2) +
+  scale_x_continuous(
+    expand = c(0.03, 0),
+    breaks = seq(-180, 180, 60),
+    labels = c('-100', '-5', '-1', '0', '1', '5', '100')
+  ) +
+  scale_y_continuous(
+    expand = c(0.03, 0),
+    breaks = seq(-90, 90, 30),
+    labels = c('-100', '-5', '-1', '0', '1', '5', '100')
+  ) +
+  labs(x = expression(Delta ~ 'urban (%)'), y = expression(Delta ~ 'wildland (%)')) 
+```
+### ocean bottom data
+```{r}
+# read original data
+odir <- "~/wildfire/WUI/GlobalWUI/Data/fig3/"
+delta <- raster(paste0(odir, "delta_20-00.tif"))
+delta <- aggregate(delta, fact = c(10, 10))
+
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
+
+# crop and resample data to align main result
+bath2 <- crop(bath, delta)
+bath3 <- resample(bath2, delta)
+
+# remove terrestrial data
+bath3[bath3 > 0] <- NA
+
+# get dataframe
+df_b <- as.data.frame(bath3, xy = T)
+```
+### main plot
+```{r}
+# Make the map using ggplot
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = crs(r[[1]]))
+
+bivMapDF <- readRDS(paste0(idir, 'Data/SI/bivMapDF_00-10.rds'))
+
+map <- ggplot() +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  geom_raster(data = bivMapDF, aes(x = x, y = y, fill = as.character(bivVal))) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  scale_fill_manual(name = "",
+                    values = colL,
+                    labels = "",
+                    na.translate = FALSE) +
+  new_scale_fill() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
+  theme_classic() +
+  theme(text = element_text(size = 10, colour = "black")) +
+  
+  theme(legend.position = "none",
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title =element_blank(),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) 
+
+
+driver_00_10 <- map +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
+  patchwork::inset_element(
+    BivLegend,
+    left = -0.1,
+    bottom = 0.05,
+    right = 0.35,
+    top = 0.5,
+    align_to = "full"
+  ) 
+
+bivMapDF <- readRDS(paste0(idir, 'Data/SI/bivMapDF_10-20.rds'))
+
+map <- ggplot() +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  geom_raster(data = bivMapDF, aes(x = x, y = y, fill = as.character(bivVal))) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
+  scale_fill_manual(name = "",
+                    values = colL,
+                    labels = "",
+                    na.translate = FALSE) +
+  new_scale_fill() +
+  geom_raster(data = df_b, mapping = aes(x = x, y = y, fill = Blue.Earth.Bathymetry)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
+  theme_classic() +
+  theme(text = element_text(size = 10, colour = "black")) +
+  
+  theme(legend.position = "none",
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title =element_blank(),
+        plot.margin= grid::unit(c(0.3, 0.5, 0.8, 0), "in")) 
+
+
+driver_10_20 <- map +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
+  patchwork::inset_element(
+    BivLegend,
+    left = -0.1,
+    bottom = 0.05,
+    right = 0.35,
+    top = 0.5,
+    align_to = "full"
+  )
+
+```
+
+### save result
+```{r}
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = driver_00_10,
+       filename = "SI_2000-10_driver.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+ggsave(plot = driver_10_20,
+       filename = "SI_2010-20_driver.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+```
+
+
+## SI Fig.3,14
+### plot GFED regions
+```{r}
+region <- rgdal::readOGR(paste0(idir, "Data/SI/basisRegion_union.shp")) %>%
+  sf::st_as_sf()
+
+# custom color palatte
+mypal <- c("#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#5b5a5a", "#5b5a5a", "#5b5a5a", rgb(0,0,0,0))
+show_col(mypal)
+names(mypal) <- as.character(c(1:8, 11:9, -999))
+
+p_region <- ggplot(region) + 
+  geom_sf(aes(fill = Acronyms)) + 
+  geom_sf_label(aes(label = Acronyms)) + 
+  # scale_fill_discrete(palette = 5) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.line.x = element_blank(),
+        axis.ticks = element_blank())
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = p_region,
+       filename = "SI_region.pdf",
+       device = "pdf", path = odir,
+       width = 15, height = 10, units = "in",
+       dpi = 320)
+```
+
+### regional driver static
+```{r}
+# abs change
+df_origin <- fread(paste0(idir, "Data/SI/driver.csv"))
+pList <- NULL
+for(k in 1:14){
+  d <- NULL
+  d$data <- unlist(df_origin[k,c(4:11,1)])
+  d$driver <- c("urban+", "urban-", "wildland+", "wildland-", "urban+", "urban-", "wildland+", "wildland-", '2000')
+  d$year <- c(2010, 2010, 2010, 2010, 2020, 2020, 2020, 2020, 2000)
+  d <- bind_cols(d) %>%
+    mutate(type = 'delta') %>%
+    as.data.frame()
+  d <- d[,c(1,2,4,3)]
+  
+  # calculate 2000-2010 base
+  d2 <- d[9,]
+  # urban+
+  d2[1,] <- c(df_origin[k,1], 'urban+', 'base', 2010)
+  # urban-
+  d2[2,] <- c(sum(d[1:2,1]) + d[9,1], 'urban-', 'base', 2010)
+  # wildland+
+  d2[3,] <- c(sum(d[1:2,1]) + d[9,1], 'wildland+', 'base', 2010)
+  # wildland-
+  d2[4,] <- c(sum(d[1:4,1]) + d[9,1], 'wildland-', 'base', 2010)
+  # 2010 base
+  d2[5,] <- c(sum(d[1:4,1]) + d[9,1], '2010', 'delta', 2010)
+  d2$data <- as.double(d2$data)
+  d2$year <- as.double(d2$year)
+  
+  # calculate 2010-2020 base
+  d3 <- d[9,]
+  # urban+
+  d3[1,] <- c(d2[4,1], 'urban+', 'base', 2020)
+  # urban-
+  d3[2,] <- c(sum(d[5:6,1]) + d2[4,1], 'urban-', 'base', 2020)
+  # wildland+
+  d3[3,] <- c(sum(d[5:6,1]) + d2[4,1], 'wildland+', 'base', 2020)
+  # wildland-
+  d3[4,] <- c(sum(d[5:8,1]) + d2[4,1], 'wildland-', 'base', 2020)
+  # 2010 base
+  d3[5,] <- c(sum(d[5:8,1]) + d2[4,1], '2020', 'delta', 2020)
+  d3$data <- as.double(d3$data)
+  d3$year <- as.double(d3$year)
+  
+  # draw abs change value
+  # prepare data
+  d_abs <- bind_rows(d, d2, d3) %>% 
+    group_by(type) %>% 
+    mutate(dummy = ifelse(type == "delta", as.character(row_number()), "-999"))
+  d_abs$origin <- as.double(d_abs$data)
+  d_abs$data <- as.double(d_abs$data) %>% abs()
+  d_abs$driver <- paste0(d_abs$year, '_', d_abs$driver)
+  d_abs$driver[9]<-'2000'
+  d_abs$driver[14]<-'2010'
+  d_abs$driver[19]<-'2020'
+  
+  # set label
+  po <- d_abs %>%
+    group_by(driver) %>%
+    summarise(y = sum(data)) %>%
+    left_join(d_abs[d_abs$type=='delta',], by = c('driver'='driver'))
+  po$percentage <- 0
+  for(i in 3:6) {
+    po$percentage[i] <- po$data[i] / po$origin[1] * 100
+  }
+  for(i in 8:11) {
+    po$percentage[i] <- po$data[i] / po$origin[2] * 100
+  }
+  po$label <- label_comma(accuracy = 0.01, prefix = ifelse(po$origin > 0, "+", "-"), suffix = "%")(po$percentage)
+  for(i in 9:11){
+    po[po$dummy == as.character(i), ]$label <- as.character(round(po[po$dummy == as.character(i), ]$data))
+  }
+  text <- d_abs[9:19,]
+  text$label<-c("", "urban+", "urban-", "wildland+", "wildland-", "", "urban+", "urban-", "wildland+", "wildland-", "")
+  text$dummy<-c(9,1:4,10,5:8,11)
+  
+  # stack bar
+  pList[[k]] <- ggplot() +
+    geom_bar(data = d_abs, aes(
+      x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")),
+      y = data,
+      fill = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))
+    ),
+    width = 0.8,
+    stat = "identity") + 
+    scale_fill_manual(values = mypal) +
+    # geom_text(data = po, 
+    #           aes(x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")), 
+    #               y = y, label = label),
+    #           size = 2,
+    #           position = position_stack(1.05)) + 
+    geom_text(data = text,
+              aes(x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")), 
+                  y = origin, label = label, colour = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))),
+              size = 1.5, angle=90, position = position_stack(0.82)) +
+    scale_color_manual(values = mypal) +
+    scale_x_discrete(labels = c("2000", " ", " ", " ", " ", "2010", " ", " ", " ", " ", "2020")) +
+    scale_y_continuous(expand = c(0,0), limits = c(0, max(po$y)*1.2), labels = comma) +
+    labs(x = '', y =expression("WUI km" ^ {2}), title = '') + 
+    theme_classic() +
+    theme(
+      legend.position = 'none', 
+      aspect.ratio = 0.5,
+      plot.title = element_text(hjust = 0.5),
+      axis.text = element_text(size = 5),
+      axis.text.x = element_text(size = 5.5),
+      axis.title = element_text(size = 5.5),
+      axis.ticks.x = element_blank(),
+      title = element_text(size = 7)
+    ) +
+    labs(title = region$Acronyms[k])
+  
+}
+si <- plot_grid(plotlist = pList, ncol = 3)
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = si,
+       filename = "driverStatic_00-20_regional.pdf",
+       device = "pdf", path = odir,
+       width = 180, height = 200, units = "mm",
+       dpi = 320)
+```
+
+
+## SI Fig.15
+```{r}
+dis_2020 <- fread(paste0(idir, "Data/fig5/M-C61_disToWUI_2020_regional_vegetation.csv.gz"))
 
 quantile(dis_2020$frp,0.99)
 large<-filter(dis_2020,frp>378.4)
@@ -596,22 +1499,22 @@ dis_label <- c(seq(0, max(large$disToWUI), 100))
 dis_cut <- cut(large$disToWUI, breaks = dis_break, labels = dis_label) 
 large$dis_group <- dis_cut
 group_count <- large %>%
-   group_by(dis_group) %>%
-   summarise(count = n())
+  group_by(dis_group) %>%
+  summarise(count = n())
 group_count$dis_index<-as.integer(group_count$dis_group)
 pl <- ggplot(group_count) +
-   geom_point(aes(x = dis_index + 0.5, y = count), size = 0.5) +
+  geom_point(aes(x = dis_index + 0.5, y = count), size = 0.5) +
   geom_point(data = group_count[group_count$count > 200,], mapping = aes(x = dis_index + 0.5, y = count), size = 1,col='red') +
-   scale_y_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
   scale_x_continuous(breaks = c(2, 2002, 4002, 6002), labels = c(0, 200, 400, 600)) +
-   labs(x = "Distance to the nearest WUI (km)", y = expression(sum('Fire Counts')), title = expression("Large fires (FRP > 99" ^ "th" ~ ")")) +
-   theme_classic() +
-   theme(aspect.ratio = 0.5,
-         plot.title = element_text(hjust = 1, size = 7),
-         axis.text = element_text(size = 6),
-         axis.title.x = element_text(size = 7),
-         axis.title.y = element_text(size = 7)
-         )
+  labs(x = "Distance to the nearest WUI (km)", y = expression(sum('Fire Counts')), title = expression("Large fires (FRP > 99" ^ "th" ~ ")")) +
+  theme_classic() +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 1, size = 7),
+        axis.text = element_text(size = 6),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_text(size = 7)
+  )
 
 small<-filter(dis_2020,frp<20)
 dis_break <- c(seq(-100, max(small$disToWUI), 100))
@@ -619,55 +1522,380 @@ dis_label <- c(seq(0, max(small$disToWUI), 100))
 dis_cut <- cut(small$disToWUI, breaks = dis_break, labels = dis_label) 
 small$dis_group <- dis_cut
 group_count <- small %>%
-   group_by(dis_group) %>%
-   summarise(count = n())
+  group_by(dis_group) %>%
+  summarise(count = n())
 group_count$dis_index<-as.integer(group_count$dis_group)
 ps <- ggplot(group_count) +
-   geom_line(aes(x = dis_index + 0.5, y = count)) +
-   scale_y_continuous(labels = comma) +
-   scale_x_continuous(breaks = c(2, 2002, 4002, 6002), labels = c(0, 200, 400, 600)) +
-   labs(x = "", y = expression(sum('Fire Counts')), title = expression("Small fires (FRP < 50" ^ "th" ~ ")")) +
-   theme_classic() +
-   theme(aspect.ratio = 0.5,
-         plot.title = element_text(hjust = 1, size = 7),
-         axis.text = element_text(size = 6),
-         axis.title.x = element_text(size = 7),
-         axis.title.y = element_text(size = 7))
+  geom_line(aes(x = dis_index + 0.5, y = count)) +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(breaks = c(2, 2002, 4002, 6002), labels = c(0, 200, 400, 600)) +
+  labs(x = "", y = expression(sum('Fire Counts')), title = expression("Small fires (FRP < 50" ^ "th" ~ ")")) +
+  theme_classic() +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 1, size = 7),
+        axis.text = element_text(size = 6),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_text(size = 7))
 
 dis_break <- c(seq(-100, max(dis_2020$disToWUI), 100))
 dis_label <- c(seq(0, max(dis_2020$disToWUI), 100))
 dis_cut <- cut(dis_2020$disToWUI, breaks = dis_break, labels = dis_label) 
 dis_2020$dis_group <- dis_cut
 group_count <- dis_2020 %>%
-   group_by(dis_group) %>%
-   summarise(count = n())
+  group_by(dis_group) %>%
+  summarise(count = n())
 group_count$dis_index<-as.integer(group_count$dis_group)
 pall <- ggplot(group_count) +
-   geom_line(aes(x = dis_index + 0.5, y = count)) +
-   scale_y_continuous(labels = comma) +
+  geom_line(aes(x = dis_index + 0.5, y = count)) +
+  scale_y_continuous(labels = comma) +
   scale_x_continuous(breaks = c(2, 2002, 4002, 6002), labels = c(0, 200, 400, 600)) +
-   labs(x = "", y = expression(sum('Fire Counts')), title = "All fires") +
-   theme_classic() +
-   theme(aspect.ratio = 0.5,
-         plot.title = element_text(hjust = 1, size = 7),
-         axis.text = element_text(size = 6),
-         axis.title.x = element_text(size = 7),
-         axis.title.y = element_text(size = 7))
+  labs(x = "", y = expression(sum('Fire Counts')), title = "All fires") +
+  theme_classic() +
+  theme(aspect.ratio = 0.5,
+        plot.title = element_text(hjust = 1, size = 7),
+        axis.text = element_text(size = 6),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_text(size = 7))
 
-si13 <- plot_grid(pall, ps, pl, ncol = 1)
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
-ggsave(plot = si13,
-       filename = "SI3_2020_disToWUI_distribution.pdf",
+si15 <- plot_grid(pall, ps, pl, ncol = 1)
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = si15,
+       filename = "SI_2020_disToWUI_distribution.pdf",
        device = "pdf", path = odir,
        width = 180, height = 200, units = "mm",
        dpi = 320)
+```
+
+## SI Fig.16
+```{r}
+sum <- NULL
+p <- NULL
+
+dis_break <- c(seq(-100, 5000, 100))
+dis_label <- c(seq(0, 5000, 100))
+
+# cut data
+cut_100 <- dis_2020 %>%
+  filter(disToWUI <= 5000) %>%
+  filter(frp <= 100)
+dis_cut <- cut(cut_100$disToWUI, breaks = dis_break, labels = dis_label)
+cut_100$dis_group <- dis_cut
+
+frp_break <- c(seq(0, 100, 10))
+frp_label <- seq(10, 100, 10)
+frp_cut <- cut(cut_100$frp, breaks = frp_break, labels = frp_label)
+cut_100$frp_group <- frp_cut
+
+for(i in 1:14){
+  df <- cut_100 %>%
+    filter(regionID == i) %>%
+    filter(disToWUI <= 5000)
+  group_count <- df %>%
+    group_by(dis_group, frp_group) %>%
+    summarise(count = n(),
+              frp_sum = sum(frp))
+  group_count$dis_index<-as.integer(group_count$dis_group)
+  group_count$frp_index<-as.integer(group_count$frp_group)
+  
+  sum[[i]] <- group_count %>%
+    as.data.frame() %>%
+    group_by(dis_index) %>%
+    summarise(sumcount = sum(count),
+              sumfrp = sum(frp_sum)) %>%
+    mutate(regionID = i)
+  
+  p[[i]] <- ggplot(sum[[i]]) +
+    geom_line(aes(x = dis_index + 0.5, y = sumcount), color = "#a50f15", linewidth = 0.3) +
+    geom_line(aes(x = dis_index + 0.5, y = sumfrp / 40), color = "#810f7c", linewidth = 0.3) +
+    scale_y_continuous(labels = comma, n.breaks = 3,
+                       sec.axis = sec_axis(~.*40, name="Sum FRP (MW)", labels = comma)) +
+    # scale_x_continuous(expand = c(0.03,0), breaks = seq(2,11,1), labels = dis_label, limits = c(1,11)) +
+    scale_x_continuous(expand = c(0.01,0), breaks = seq(2, 52, 10), labels = seq(0, 5, 1), limits = c(1,52)) +
+    labs(x = "", y = expression(sum('Fire Counts'))) +
+    # coord_fixed(ratio = 0.5) +
+    theme_classic() +
+    theme(aspect.ratio = 0.5,
+          axis.title.y.left = element_text(color = "#a50f15", size = 4.5),
+          axis.title.y.right = element_text(color = "#810f7c", size = 4.5, angle = 90, hjust = 0.5),
+          axis.text.y.left = element_text(color = "#a50f15", size = 4, angle = 90, hjust = 0.5),
+          axis.text.y.right = element_text(color = "#810f7c", size = 4, angle = 90, hjust = 0.5),
+          axis.text.x = element_text(size = 4),
+          axis.line.y.left = element_line(color = "#a50f15", linewidth = 0.2),
+          axis.line.y.right = element_line(color = "#810f7c", linewidth = 0.2),
+          axis.ticks.y.left = element_line(color = "#a50f15", linewidth = 0.1),
+          axis.ticks.y.right = element_line(color = "#810f7c", linewidth = 0.1),
+          axis.line.x = element_line(linewidth = 0.2),
+          axis.ticks.x = element_line(linewidth = 0.1),
+          plot.title = element_text(hjust = 0.5),
+          title = element_text(size = 6)
+    ) +
+    labs(title = region$Acronyms[i], x = "Distance to the nearest WUI (km)")
+}
+p[[1]] <- p[[1]] + 
+  scale_y_continuous(labels = comma, breaks = c(100,200,300),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(100,200,300) * 40, labels = c(100,200,300) * 0.04))
+p[[2]] <- p[[2]] + 
+  scale_y_continuous(labels = comma, breaks = c(1000,3000,5000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(1000,3000,5000) * 40, labels = c(1000,3000,5000) * 0.04)) 
+p[[3]] <- p[[3]] + 
+  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
+p[[4]] <- p[[4]] + 
+  scale_y_continuous(labels = comma, breaks = c(200,400,600),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(200,400,600) * 40, labels = c(200,400,600) * 0.04)) 
+p[[5]] <- p[[5]] + 
+  scale_y_continuous(labels = comma, breaks = c(2500,3500,5000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(2500,3500,5000) * 40, labels = c(2500,3500,5000) * 0.04)) 
+p[[6]] <- p[[6]] + 
+  scale_y_continuous(labels = comma, breaks = c(200,500,700),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(200,500,700) * 40, labels = c(200,500,700) * 0.04)) 
+p[[7]] <- p[[7]] + 
+  scale_y_continuous(labels = comma, breaks = c(300,700,1000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(300,700,1000) * 40, labels = c(300,700,1000) * 0.04)) 
+p[[8]] <- p[[8]] + 
+  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
+p[[9]] <- p[[9]] + 
+  scale_y_continuous(labels = comma, breaks = c(4000,7000,10000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(4000,7000,10000) * 40, labels = c(4000,7000,10000) * 0.04)) 
+p[[10]] <- p[[10]] + 
+  scale_y_continuous(labels = comma, breaks = c(600,1800,3000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(600,1800,3000) * 40, labels = c(600,1800,3000) * 0.04)) 
+p[[11]] <- p[[11]] + 
+  scale_y_continuous(labels = comma, breaks = c(2000,5000,8000),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(2000,5000,8000) * 40, labels = c(2000,5000,8000) * 0.04)) 
+p[[12]] <- p[[12]] + 
+  scale_y_continuous(labels = comma, breaks = c(500,1000,1500),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(500,1000,1500) * 40, labels = c(500,1000,1500) * 0.04)) 
+p[[13]] <- p[[13]] + 
+  scale_y_continuous(labels = comma, breaks = c(100,200,300),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(100,200,300) * 40, labels = c(100,200,300) * 0.04)) 
+p[[14]] <- p[[14]] + 
+  scale_y_continuous(labels = comma, breaks = c(300,600,900),
+                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
+                                         breaks = c(300,600,900) * 40, labels = c(300,600,900) * 0.04)) 
+si <- plot_grid(plotlist = p, ncol = 3)
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = si,
+       filename = "SI_2020_fire_disToWUI_regional.pdf",
+       device = "pdf", path = odir,
+       width = 180, height = 200, units = "mm",
+       dpi = 320)
+```
+
+## SI Fig.17
+```{r}
+dis_2020_new <- fread('~/wildfire/WUI/GlobalWUI/Data/SI/2020_disToWUI_new_fireInfo.csv.gz')
+wgs84 <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+dis_point <- vect(dis_2020_new, geom=c("longitude", "latitude"), crs=wgs84, keepgeom=FALSE)
+dis_r <- rasterize(dis_point, rast(res = c(0.1,0.1), crs=wgs84), fun = 'mean', field = 'disToWUI_new')
+dis_df <- as.data.frame(dis_r, xy = T)
+
+my_at <- c(-1, 0, 1000, 3000, 5000, 10000, 15000, 50000, max(dis_df$mean))
+dis_df$valueDiscr <- cut(dis_df$mean,
+                         breaks = my_at, right = T)
+cols1 <- c('#fcc5c0','#fa9fb5','#f768a1','#dd3497',rev(c('#bae4b3','#74c476','#31a354','#006d2c')))
+
+world <- filter(spData::world, region_un!="Antarctica")
+world <- st_transform(world, crs = wgs84)
+
+# read original data
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds")) %>% rast()
+
+# crop and resample data to align main result
+bath2 <- crop(bath, world)
+bath3 <- resample(bath2, dis_r)
+
+# remove terrestrial data
+bath3[bath3 > 0] <- NA
+
+# get dataframe
+df_b <- as.data.frame(bath3, xy = T)
+names(df_b) <- c('x', 'y', 'Bath')
+
+p <- ggplot() +
+  geom_tile(data = df_b, mapping = aes(x = x, y = y, fill = Bath)) +
+  scale_fill_gradient(low = "#21ADE3", high = "#f7fbff", na.value = "transparent", guide = 'none', limits = c(-12000,0)) +
+  geom_sf(data = world, fill = '#252525', color = NA) +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  new_scale_fill() +
+  geom_tile(data = dis_df, aes(x = x, y = y,fill = valueDiscr)) +
+  theme_classic() +
+  scale_fill_manual(values = cols1, na.translate = F, 
+                    labels = c('    ', '0', '1','3', '5', '10', '15', '50', ''),                 
+                    guide = guide_legend(nrow = 1, 
+                                         keywidth = 0.6, keyheight = 0.8,
+                                         label.position = "bottom", title.position = "top",
+                                         title = expression('Distance to the nearest new WUI in 2020 (km)'),
+                                         title.hjust = 0.5,
+                                         label.hjust = -4)) +
+  geom_sf(data = world, fill = NA, linewidth = 0.05, color = "#969696", alpha = 0.5) +
+  
+  # borders(colour = "black", size = 0.3, fill = rgb(0.5,0.5,0.5, 0.15), xlim = c(-180, 180), ylim = c(-61, 90)) +
+  # coord_quickmap(expand = FALSE, xlim = c(-180, 180), ylim = c(-61, 90)) +
+  theme(legend.position = c(0.6,0.12),
+        legend.direction = 'horizontal',
+        # legend.key.size = unit(0.3, 'cm'),
+        legend.spacing.x = unit(0, 'cm'),
+        legend.background = element_blank(), 
+        legend.title = element_text(size = 10),
+        panel.border = element_blank(),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+        legend.text = element_text(color = "black", size = 10),
+        axis.text.x  = element_blank(),
+        axis.text.y  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        plot.title = element_text(hjust = 0.1, vjust = -5), 
+        plot.margin= grid::unit(c(0, 0.2, 0.5, 0), "in")) +
+  labs(x ="", y = "") 
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = p,
+       filename = "SI_dis2WUI_new_mapping.pdf",
+       device = "pdf", path = odir,
+       width = 7, height = 5, units = "in",
+       dpi = 320)
+```
+## SI Fig.18
+### heatmap
+```{r}
+# subset data by disToWUI and FRP
+dis_break <- c(seq(-1000, 5000, 1000))
+dis_label <- c(seq(0, 5000, 1000))
+
+# cut data
+cut_2020 <- dis_2020_new %>%
+  filter(disToWUI_new <= 5000) %>%
+  filter(frp <= 100)
+dis_cut <- cut(cut_2020$disToWUI_new, breaks = dis_break, labels = dis_label)
+cut_2020$dis_group <- dis_cut
+
+frp_break <- c(seq(0, 100, 10))
+frp_label <- seq(10, 100, 10)
+frp_cut <- cut(cut_2020$frp, breaks = frp_break, labels = frp_label)
+cut_2020$frp_group <- frp_cut
+
+
+group_2020 <- cut_2020 %>%
+  group_by(dis_group, frp_group) %>%
+  summarise(count = n(),
+            frp_sum = sum(frp))
+group_2020$dis_index<-as.integer(group_2020$dis_group) - 0.5
+group_2020$frp_index<-as.integer(group_2020$frp_group) - 0.5
+
+tmp <- group_2020[group_2020$dis_index == 0.5,]
+tmp$dis_index <- -0.5
+
+dis_p <- ggplot(data = group_2020, aes(x = dis_index, y = frp_index, fill = frp_sum/100000)) +
+  geom_raster() +
+  geom_text(data = group_2020, mapping = aes(label = round(count/1000)), size = 2) +
+  geom_vline(xintercept = 1, color = '#252525', linetype = 'dashed', linewidth = 0.2) +
+  coord_fixed(ratio = 0.6) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(1, 6, 1), labels = seq(0, 5, 1)) +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0, 10, 2), labels = seq(0, 100, 20)) + 
+  scale_fill_stepsn(colours = c('#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'), 
+                    breaks = c(0.5, seq(1,7), 10, 14), 
+                    # labels = c("", "2", "", "3", "", "4", "", "5", "","6","","7"),
+                    guide = guide_colorsteps(title = expression(atop(sum(FRP), '('%*% 10 ^ {5} ~'MW)')), barwidth = 8, barheight = 0.8, title.position = "right")) +
+  labs(x = "Distance to the nearest WUI (km)", y = "FRP (MW)") +    
+  theme_bw() +
+  theme(
+    axis.line = element_blank(),
+    legend.position = 'bottom',
+    legend.title = element_text(size = 7),
+    legend.text = element_text(size = 6),
+    axis.text = element_text(size = 6),
+    axis.title = element_text(size = 7),
+    axis.ticks = element_line(linewidth = 0.5)
+  )
+
+```
+
+### top plot
+```{r}
+# subset data by disToWUI and FRP
+dis_break <- c(seq(-1000, 5000, 1000))
+dis_label <- c(seq(0, 5000, 1000))
+
+dis_cut <- cut(cut_2020$disToWUI_new, breaks = dis_break, labels = dis_label)
+cut_2020$dis_group <- dis_cut
+
+frp_break <- c(seq(0, 100, 10))
+frp_label <- seq(10, 100, 10)
+frp_cut <- cut(cut_2020$frp, breaks = frp_break, labels = frp_label)
+cut_2020$frp_group <- frp_cut
+
+group_top <- cut_2020 %>%
+  group_by(dis_group, frp_group) %>%
+  summarise(count = n(),
+            frp_sum = sum(frp))
+group_top$dis_index<-as.integer(group_top$dis_group) 
+group_top$frp_index<-as.integer(group_top$frp_group) - 0.5
+
+tmp <- group_top[group_top$dis_index == 1,]
+tmp$dis_index <- -1
+
+cols <- colorRampPalette(c('#fff5eb','#d94801',"#800026"))(10)
+names(cols) <- seq(10,100,10)
+# stacked area
+disT_p <- ggplot(group_top) + 
+  geom_area(aes(x = dis_index, y = frp_sum / 1e5, fill = rev(frp_group), group = frp_group), position = 'stack') +
+  geom_vline(xintercept = 1, color = '#636363', linetype = 'dashed', linewidth = 0.2) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(1, 11, 2), labels = seq(0, 5, 1)) +
+  scale_y_continuous(expand = c(0,0), labels = comma, name = expression(sum(FRP) %*% 10 ^ {5} ~'MW')) +
+  labs(x = "", fill = 'FRP (MW)') +
+  theme_classic() +
+  theme(aspect.ratio = 0.3,
+        axis.title.y.left = element_text(size = 7),
+        axis.text.y.left = element_text(size = 6),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.line = element_line(linewidth = 0.2), 
+        axis.ticks = element_line(linewidth = 0.5),
+        plot.title = element_text(hjust = 0.5),
+        title = element_text(size = 7)
+  ) +
+  scale_fill_manual(values = cols, guide = 'none')
+```
+
+### combine plot
+```{r}
+SI_dis <- disT_p + dis_p +
+  patchwork::plot_layout(ncol = 1) 
+
+odir <-paste0(idir, "Figure/SI")
+ggsave(plot = SI_dis,
+       filename = "SI_dis2WUI_new_static.pdf",
+       device = "pdf", path = odir,
+       width = 3.5, height = 5, units = "in",
+       dpi = 320)
+```
+
+
+## SI Table 6
+```{r}
 fire_in <- filter(dis_2020, disToWUI == 0)
 length(fire_in[,1])/length(dis_2020[,1])
 quantile(fire_in$frp,0.9)
-```
 
-## SI Table 4
-```{r}
 d1 <-fire_in %>% 
   filter(!is.na(regionID)) %>%
   group_by(regionID) %>%
@@ -679,9 +1907,16 @@ d2 <-fire_near %>%
   group_by(regionID) %>%
   summarise(near_count = n(),
             near_frp = sum(frp))
-d <- left_join(d1, d2, by = c("regionID"))
-d$per <- d$in_count / d$near_count
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
+d3 <- dis_2020 %>% 
+  filter(!is.na(regionID)) %>%
+  group_by(regionID) %>%
+  summarise(count = n())
+d <- left_join(d1, d2, by = c("regionID")) %>%
+  left_join(d3, by = c('regionID'))
+d$per <- d$in_count / d$count
+
+odir <-paste0(idir, "Data/SI")
 fwrite(d, paste0(odir, "fire_statistic.csv"))
 ```
+
 

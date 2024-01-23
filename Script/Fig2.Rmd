@@ -1,5 +1,5 @@
 ---
-title: "04a_fig2"
+title: "Fig2"
 author: "Yongxuan Guo"
 date: "2022/6/4"
 output: html_document
@@ -13,24 +13,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## set work directory and load packages
 ```{r}
-library(raster)
-library(sf)
-library(foreach)
-library(doParallel)
-library(sp)
-library(rasterVis)
-library(RColorBrewer)
-library(dplyr)
-library(scales)
-library(ggplot2)
-library(ggsci)
-library(patchwork)
-library(ggnewscale)
-library(ggrepel)
+if (!require("pacman")){
+  install.packages("pacman")
+}
+require(pacman)
+pacman::p_load(raster, sf, ggplot2, dplyr, cowplot, ggnewscale, ggrepel)
+
+# tmpdir path can be changed to your own temp file path
 raster::rasterOptions(tmpdir = '/project/public/')
 
-idir <- "/GlobalWUI/"
-type <- 'WUI'
+# idir points to where you save the project
+idir <- "~/wildfire/WUI/GlobalWUI/"
 wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 ```
 
@@ -161,7 +154,7 @@ p2 <- ggplot(data = bylat, mapping = aes(y = y, group = year)) +
 ### ocean bottom data
 ```{r}
 # read original data
-bath <- raster(paste0(idir, "Data/Blue-Earth-Bathymetry.tif"))
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
 
 # crop and resample data to align main result
 bath2 <- crop(bath, w2020)
@@ -228,14 +221,9 @@ p <- ggplot() +
 
 ## regional WUI in 2020
 ```{r}
-adm1 <- rgdal::readOGR(paste0(idir, "Data/gadm/boundary/adm1.shp")) %>%
-  sf::st_as_sf()
-st_crs(adm1) <- wgs84
-sf::sf_use_s2(F)
-
 # Eastern North America
 # xmin = -86, xmax = -86, ymin = 31, ymax = 35
-ena_adm <- st_crop(adm1, extent(-87, -81, 32, 35))
+ena_adm <- readRDS(paste0(idir, 'Data/fig2/ena_adm.rds'))
 ena_raster <- crop(rList[[3]], extent(-87, -81, 32, 35))
 ena_raster[ena_raster == 0] <- NA
 df_ena <- as.data.frame(ena_raster, xy = T)
@@ -274,7 +262,7 @@ pena <- ggplot() +
 
 # South Africa
 # xmin = 27, xmax = 33, ymin = -28, ymax = -25
-sa_adm <- st_crop(adm1, extent(26, 32, -28, -25))
+sa_adm <- readRDS(paste0(idir, 'Data/fig2/sa_adm.rds'))
 sa_raster <- crop(rList[[3]], extent(26, 32, -28, -25))
 sa_raster[sa_raster == 0] <- NA
 df_sa <- as.data.frame(sa_raster, xy = T)
@@ -315,7 +303,7 @@ psa <- ggplot() +
 
 # Southeast China
 # xmin = 112, xmax = 118, ymin = 22, ymax = 25
-china_adm <- st_crop(adm1, extent(111, 117, 21.5, 24.5))
+china_adm <- readRDS(paste0(idir, 'Data/fig2/china_adm.rds'))
 china_raster <- crop(rList[[3]], extent(111, 117, 21.5, 24.5))
 china_raster[china_raster == 0] <- NA
 china_bath <- crop(bath, extent(111, 117, 21.5, 24.5)) %>%

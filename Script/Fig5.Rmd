@@ -12,80 +12,27 @@ knitr::opts_chunk$set(echo = TRUE)
 # fig5. Heatmap to show relationship of WUI and fire observation
 ## packages and paths
 ```{r}
-# remotes::install_github("arielfri/buffr")
-library(dplyr)
-library(data.table)
-library(tidyverse)
-library(ggplot2)
-library(RColorBrewer)
-library(scales)
-library(grid)
-library(patchwork)
-library(trend)
-library(cowplot)
+if (!require("pacman")){
+  install.packages("pacman")
+}
+require(pacman)
+pacman::p_load(raster, sf, ggplot2, dplyr, ggrepel, data.table, RColorBrewer, scales, patchwork)
+
 raster::rasterOptions(tmpdir = '/project/public/')
 
-idir <- "~/COVID-Fire/data/03_fireToWUI/"
+idir <- "~/wildfire/WUI/GlobalWUI/"
 
-```
-
-## get original data
-```{r}
-# read 2020's data
-year <- "2020"
-file <- dir(idir, pattern = glob2rx(paste0("*", year, "*.csv.gz")))
-dis_2020 <- fread(paste0(idir, file))
-# read 2020's fire data
-idir_f <- '/sdd/fire/FIRMS/archive/'
-fire <- data.table::fread(dir(paste0(idir_f, '2020'), 
-                              pattern = glob2rx('*M-C61*.csv'), 
-                              full.names = T)) %>%
-  mutate(ID=row_number()) %>%
-  dplyr::select(ID, frp) %>%
-  # drop observation whose FRP <= 0
-  filter(frp > 0)
-# combine data
-dis_2020 <- inner_join(dis_2020, fire, by = c("ID"))
-
-# read 2020's data
-year <- "2010"
-file <- dir(idir, pattern = glob2rx(paste0("*", year, "*.csv.gz")))
-dis_2010 <- fread(paste0(idir, file))
-# read 2020's fire data
-idir_f <- '/sdd/fire/FIRMS/archive/'
-fire <- data.table::fread(dir(paste0(idir_f, '2010'), 
-                              pattern = glob2rx('*M-C61*.csv'), 
-                              full.names = T)) %>%
-  mutate(ID=row_number()) %>%
-  dplyr::select(ID, frp) %>%
-  # drop observation whose FRP <= 0
-  filter(frp > 0)
-# combine data
-dis_2010 <- inner_join(dis_2010, fire, by = c("ID"))
-
-# regional statistic
-odir <- "~/wildfire/WUI/data/00_spatial/"
-region <- rgdal::readOGR(paste0(odir, "basisRegion_union.shp")) %>%
-  sf::st_as_sf()
-inter <- sp::over(as_Spatial(st_as_sf(dis_2020, coords = c("longitude", "latitude"), crs = wgs84)), 
-                  as_Spatial(region), returnList = F) %>%
-  as.data.frame() %>%
-  cbind(dis_2020)
-dis_2020 <- inter
-names(dis_2020) <- c("regionID", names(dis_2020)[2:9])
-
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
-write.csv(dis_2020, paste0(odir, "M-C61_disToWUI_2020_regional.csv"))
-dis_2020 <- read.csv(paste0(odir, "M-C61_disToWUI_2020_regional.csv"))
 ```
 
 using cut-tail data
 # distribution in 2020
 ## heatmap
 ```{r}
+dis_2010 <- fread(paste0(idir, "Data/fig5/M-C61_disToWUI_2010_regional_vegetation.csv.gz"))
+dis_2020 <- fread(paste0(idir, "Data/fig5/M-C61_disToWUI_2020_regional_vegetation.csv.gz"))
 # subset data by disToWUI and FRP
-dis_break <- c(seq(-500, 5000, 500))
-dis_label <- c(seq(0, 5000, 500))
+dis_break <- c(seq(-1000, 5000, 1000))
+dis_label <- c(seq(0, 5000, 1000))
 
 # cut data
 cut_2020 <- dis_2020 %>%
@@ -100,6 +47,8 @@ cut_2010 <- dis_2010 %>%
 dis_cut <- cut(cut_2010$disToWUI, breaks = dis_break, labels = dis_label)
 cut_2010$dis_group <- dis_cut
 
+# show quantile of FRP to set breaks
+# quantile(dis_2020$frp, seq(0,1,0.1))
 frp_break <- c(seq(0, 100, 10))
 frp_label <- seq(10, 100, 10)
 frp_cut <- cut(cut_2020$frp, breaks = frp_break, labels = frp_label)
@@ -116,27 +65,17 @@ group_2020$frp_index<-as.integer(group_2020$frp_group) - 0.5
 
 tmp <- group_2020[group_2020$dis_index == 0.5,]
 tmp$dis_index <- -0.5
-group_2020 <- bind_rows(group_2020, tmp)
-tmp$dis_index <- 0
-
-my_at <- c(-10, 0, 500, 1500, 3000, 5000, 7000, 10000, 13000)
-#Get desired core colours from brewer
-cols0 <- brewer.pal(n=length(my_at), name="YlOrRd")
-#Derive desired break/legend colours from gradient of selected brewer palette
-cols1 <- colorRampPalette(cols0, space="rgb")(length(my_at))
-group_2020$valueDiscr <- cut(group_2020$count, breaks = my_at, right = T)
 
 dis_p <- ggplot(data = group_2020, aes(x = dis_index, y = frp_index, fill = frp_sum/100000)) +
     geom_raster() +
-    geom_text(data = group_2020[group_2020$dis_index > 0.5, ], mapping = aes(label = round(count/1000)), size = 2) +
-  geom_text(data = tmp,  mapping = aes(x = dis_index, y = frp_index, label = round(count/1000)), size = 2) +
+    geom_text(data = group_2020, mapping = aes(label = round(count/1000)), size = 2) +
     geom_vline(xintercept = 1, color = '#252525', linetype = 'dashed', linewidth = 0.2) +
-    coord_fixed(ratio = 1) +
-    scale_x_continuous(expand = c(0,0), breaks = seq(1, 11, 2), labels = seq(0, 5, 1)) +
+    coord_fixed(ratio = 0.6) +
+    scale_x_continuous(expand = c(0,0), breaks = seq(1, 6, 1), labels = seq(0, 5, 1)) +
     scale_y_continuous(expand = c(0,0), breaks = seq(0, 10, 2), labels = seq(0, 100, 20)) + 
     scale_fill_stepsn(colours = c('#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'), 
-                      breaks = seq(1.5,7,0.5), 
-                      labels = c("", "2", "", "3", "", "4", "", "5", "","6","","7"), 
+                      breaks = c(0.5, seq(1,7), 10, 14), 
+                      # labels = c("", "2", "", "3", "", "4", "", "5", "","6","","7"),
                       guide = guide_colorsteps(title = expression(atop(sum(FRP), '('%*% 10 ^ {5} ~'MW)')), barwidth = 8, barheight = 0.8, title.position = "right")) +
     labs(x = "Distance to the nearest WUI (km)", y = "FRP (MW)") +    
     theme_bw() +
@@ -155,12 +94,14 @@ dis_p <- ggplot(data = group_2020, aes(x = dis_index, y = frp_index, fill = frp_
 ## top plot
 ```{r}
 # subset data by disToWUI and FRP
-dis_break <- c(seq(-500, 5000, 500))
-dis_label <- c(seq(0, 5000, 500))
+dis_break <- c(seq(-1000, 5000, 1000))
+dis_label <- c(seq(0, 5000, 1000))
 
 dis_cut <- cut(cut_2020$disToWUI, breaks = dis_break, labels = dis_label)
 cut_2020$dis_group <- dis_cut
 
+# show quantile of FRP to set breaks
+# quantile(dis_2020$frp, seq(0,1,0.1))
 frp_break <- c(seq(0, 100, 10))
 frp_label <- seq(10, 100, 10)
 frp_cut <- cut(cut_2020$frp, breaks = frp_break, labels = frp_label)
@@ -175,7 +116,7 @@ group_top$frp_index<-as.integer(group_top$frp_group) - 0.5
 
 tmp <- group_top[group_top$dis_index == 1,]
 tmp$dis_index <- -1
-group_top <- bind_rows(group_top, tmp)
+# group_top <- bind_rows(group_top, tmp)
 
 cols <- colorRampPalette(c('#fff5eb','#d94801',"#800026"))(10)
 names(cols) <- seq(10,100,10)
@@ -213,28 +154,27 @@ group_2010$frp_index<-as.integer(group_2010$frp_group) - 0.5
 
 tmp <- group_2010[group_2010$dis_index == 0.5,]
 tmp$dis_index <- -0.5
-group_2010 <- bind_rows(group_2010, tmp)
+# group_2010 <- bind_rows(group_2010, tmp)
 
 delta <- left_join(group_2020, group_2010, by = c('dis_group', 'dis_index', 'frp_group', 'frp_index'))
 delta$frp_delta <- delta$frp_sum.x - delta$frp_sum.y
 delta$count_delta <- delta$count.x - delta$count.y
 
-my_at <- c(-50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 125, 150)
+my_at <- c(-50, -25, -10, -5, 0, 10, 25, 50, 75, 100, 250, 300)
 #Get desired core colours from brewer
 cols <- c(rev(c('#d9ef8b','#a6d96a','#66bd63','#1a9850')), '#ffffcc','#ffeda0','#fed976','#feb24c','#fd8d3c','#fc4e2a','#e31a1c','#bd0026')
 #Derive desired break/legend colours from gradient of selected brewer palette
 delta$valueDiscr <- cut(delta$frp_delta / 1000, breaks = my_at, right = T)
 
 tmp <- delta[delta$dis_index == 0.5, ]
-tmp$dis_index <- 0
+tmp$dis_index <- 0.5
 
 delta_p <- ggplot(data = delta, aes(x = dis_index, y = frp_index, fill = valueDiscr)) +
     geom_raster() +
-    geom_text(data = delta[delta$dis_index > 0.5, ], mapping = aes(label = round(count_delta/100)), size = 2) +
-    geom_text(data = tmp,  mapping = aes(x = dis_index, y = frp_index, label = round(count_delta/100)), size = 2) +
+    geom_text(data = delta, mapping = aes(label = round(count_delta/100)), size = 2) +
   geom_vline(xintercept = 1, color = '#252525', linetype = 'dashed', linewidth = 0.2) +
-    coord_fixed(ratio = 1) +
-    scale_x_continuous(expand = c(0,0), breaks = seq(1, 11, 2), labels = seq(0, 5, 1)) +
+    coord_fixed(ratio = 0.6) +
+    scale_x_continuous(expand = c(0,0), breaks = seq(1, 6, 1), labels = seq(0, 5, 1)) +
     scale_y_continuous(expand = c(0,0), breaks = seq(0, 10, 2), labels = seq(0, 100, 20)) + 
     scale_fill_manual(values = cols, labels = my_at,
                       guide = guide_legend(nrow = 1, 
@@ -255,12 +195,11 @@ delta_p <- ggplot(data = delta, aes(x = dis_index, y = frp_index, fill = valueDi
 
 dt <- bind_rows(delta[delta$dis_index > 0.5, ], tmp)
 deltaT_p <- ggplot() +
-  geom_boxplot(data = dt, mapping = aes(x = dis_index, y = frp_delta / 1000, 
-                                       fill = dis_index, group = dis_index), alpha = 0.5, linewidth = 0.2, outlier.size = 0.2) +
+  geom_boxplot(data = delta, mapping = aes(x = dis_index, y = frp_delta / 1000, 
+                                           group = dis_index), alpha = 0.5, fill = 'pink', linewidth = 0.2, outlier.size = 0.2) +
   geom_hline(yintercept = 0, color = '#636363', linetype = 'dashed', linewidth = 0.2) + 
   geom_vline(xintercept = 1, color = '#636363', linetype = 'dashed', linewidth = 0.2) +
   theme_classic() +
-  scale_x_continuous(expand = c(0,0.1), limits = c(-1, 11)) + 
   scale_fill_distiller(palette = "Set3") +
   scale_y_continuous(expand = c(0,0), labels = comma, name = expression(Delta(FRP) %*% 10 ^ {3} ~'MW')) +
   labs(x = "", fill = 'FRP (MW)') +
@@ -276,6 +215,8 @@ deltaT_p <- ggplot() +
         axis.ticks = element_line(linewidth = 0.5),
         legend.position = 'none'
   ) 
+
+
 ```
 
 # combine plot
@@ -285,7 +226,7 @@ fig_4a <- disT_p + dis_p +
 fig_4b <- deltaT_p + delta_p +
   plot_layout(ncol = 1) 
 
-odir <- "~/wildfire/WUI/data/02_analysis/0401"
+odir <- paste0(idir, "Figure")
 ggsave(plot = fig_4a,
        filename = "fig5_2020_fire_disToWUI_global.pdf",
        device = "pdf", path = odir,
@@ -295,136 +236,5 @@ ggsave(plot = fig_4b,
        filename = "fig5_delta_fire_disToWUI_global.pdf",
        device = "pdf", path = odir,
        width = 3.5, height = 5, units = "in",
-       dpi = 320)
-```
-
-# regional plots
-```{r}
-sum <- NULL
-p <- NULL
-
-dis_break <- c(seq(-100, 5000, 100))
-dis_label <- c(seq(0, 5000, 100))
-
-# cut data
-cut_100 <- dis_2020 %>%
-  filter(disToWUI <= 5000) %>%
-  filter(frp <= 100)
-dis_cut <- cut(cut_100$disToWUI, breaks = dis_break, labels = dis_label)
-cut_100$dis_group <- dis_cut
-
-frp_break <- c(seq(0, 100, 10))
-frp_label <- seq(10, 100, 10)
-frp_cut <- cut(cut_100$frp, breaks = frp_break, labels = frp_label)
-cut_100$frp_group <- frp_cut
-
-for(i in 1:14){
-  df <- cut_100 %>%
-    filter(regionID == i) %>%
-    filter(disToWUI <= 5000)
-  group_count <- df %>%
-    group_by(dis_group, frp_group) %>%
-    summarise(count = n(),
-              frp_sum = sum(frp))
-  group_count$dis_index<-as.integer(group_count$dis_group)
-  group_count$frp_index<-as.integer(group_count$frp_group)
-
-  sum[[i]] <- group_count %>%
-    as.data.frame() %>%
-    group_by(dis_index) %>%
-    summarise(sumcount = sum(count),
-              sumfrp = sum(frp_sum)) %>%
-    mutate(regionID = i)
-
-  p[[i]] <- ggplot(sum[[i]]) +
-    geom_line(aes(x = dis_index + 0.5, y = sumcount), color = "#b35806", linewidth = 0.3) +
-    geom_line(aes(x = dis_index + 0.5, y = sumfrp / 40), color = "#542788", linewidth = 0.3) +
-    scale_y_continuous(labels = comma, n.breaks = 3,
-                       sec.axis = sec_axis(~.*40, name="Sum FRP (MW)", labels = comma)) +
-    # scale_x_continuous(expand = c(0.03,0), breaks = seq(2,11,1), labels = dis_label, limits = c(1,11)) +
-    scale_x_continuous(expand = c(0.01,0), breaks = seq(2, 52, 10), labels = seq(0, 5, 1), limits = c(1,52)) +
-    labs(x = "", y = expression(sum('Fire Counts'))) +
-    # coord_fixed(ratio = 0.5) +
-    theme_classic() +
-    theme(aspect.ratio = 0.5,
-          axis.title.y.left = element_text(color = "#b35806", size = 4.5),
-          axis.title.y.right = element_text(color = "#542788", size = 4.5, angle = 90, hjust = 0.5),
-          axis.text.y.left = element_text(color = "#b35806", size = 4, angle = 90, hjust = 0.5),
-          axis.text.y.right = element_text(color = "#542788", size = 4, angle = 90, hjust = 0.5),
-          axis.text.x = element_text(size = 4),
-          axis.line.y.left = element_line(color = "#b35806", linewidth = 0.2),
-          axis.line.y.right = element_line(color = "#542788", linewidth = 0.2),
-          axis.ticks.y.left = element_line(color = "#b35806", linewidth = 0.1),
-          axis.ticks.y.right = element_line(color = "#542788", linewidth = 0.1),
-          axis.line.x = element_line(linewidth = 0.2),
-          axis.ticks.x = element_line(linewidth = 0.1),
-          plot.title = element_text(hjust = 0.5),
-          title = element_text(size = 6)
-          ) +
-    labs(title = region$Acronyms[i], x = "Distance to the nearest WUI (km)")
-}
-p[[1]] <- p[[1]] + 
-  scale_y_continuous(labels = comma, breaks = c(100,200,300),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(100,200,300) * 40, labels = c(100,200,300) * 0.04))
-p[[2]] <- p[[2]] + 
-  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
-p[[3]] <- p[[3]] + 
-  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
-p[[4]] <- p[[4]] + 
-  scale_y_continuous(labels = comma, breaks = c(1500,3000,4500),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(1500,3000,4500) * 40, labels = c(1500,3000,4500) * 0.04)) 
-p[[5]] <- p[[5]] + 
-  scale_y_continuous(labels = comma, breaks = c(3000,6000,9000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(3000,6000,9000) * 40, labels = c(3000,6000,9000) * 0.04)) 
-p[[6]] <- p[[6]] + 
-  scale_y_continuous(labels = comma, breaks = c(700,1400,2100),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(700,1400,2100) * 40, labels = c(700,1400,2100) * 0.04)) 
-p[[7]] <- p[[7]] + 
-  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
-p[[8]] <- p[[8]] + 
-  scale_y_continuous(labels = comma, breaks = c(2000,4000,6000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(2000,4000,6000) * 40, labels = c(2000,4000,6000) * 0.04)) 
-p[[9]] <- p[[9]] + 
-  scale_y_continuous(labels = comma, breaks = c(4000,8000,12000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(4000,8000,12000) * 40, labels = c(4000,8000,12000) * 0.04)) 
-p[[10]] <- p[[10]] + 
-  scale_y_continuous(labels = comma, breaks = c(4000,8000,12000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(4000,8000,12000) * 40, labels = c(4000,8000,12000) * 0.04)) 
-p[[11]] <- p[[11]] + 
-  scale_y_continuous(labels = comma, breaks = c(5000,10000,15000),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(5000,10000,15000) * 40, labels = c(5000,10000,15000) * 0.04)) 
-p[[12]] <- p[[12]] + 
-  scale_y_continuous(labels = comma, breaks = c(500,1000,1500),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(500,1000,1500) * 40, labels = c(500,1000,1500) * 0.04)) 
-p[[13]] <- p[[13]] + 
-  scale_y_continuous(labels = comma, breaks = c(300,600,900),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(300,600,900) * 40, labels = c(300,600,900) * 0.04)) 
-p[[14]] <- p[[14]] + 
-  scale_y_continuous(labels = comma, breaks = c(500,1000,1500),
-                     sec.axis = sec_axis(~.*40, name = expression(sum(FRP) %*% 10 ^ {3} ~'MW'), 
-                                         breaks = c(500,1000,1500) * 40, labels = c(500,1000,1500) * 0.04)) 
-si <- plot_grid(plotlist = p, ncol = 3)
-
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
-ggsave(plot = si,
-       filename = "SI14_2020_fire_disToWUI_regional.pdf",
-       device = "pdf", path = odir,
-       width = 180, height = 200, units = "mm",
        dpi = 320)
 ```

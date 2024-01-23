@@ -28,7 +28,7 @@ wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 ## landcover time series: based on HILDA+ long term data
 ```{r}
 # load data
-lulc <- fread(paste0(idir, "Data/HILDA+_change_2000-2019.csv"))
+lulc <- fread(paste0(idir, "Data/fig1/HILDA+_change_2000-2019.csv"))
 lulc$x <- as.integer(lulc$year) - 1999
 
 # trend detection
@@ -80,7 +80,7 @@ p_lu <- ggplot(lulc) +
 ## fire time series
 ```{r}
 # load fire data
-fire <- fread(paste0(idir, "Data/MODIS_fire_2003-2020.csv"))
+fire <- fread(paste0(idir, "Data/fig1/MODIS_fire_2003-2020.csv"))
 
 # trend detection
 mk.test(fire$frp)
@@ -132,7 +132,7 @@ p_f <- ggplot(fire) +
 
 ```{r}
 # load data
-era5 <- fread(paste0(idir, "Data/ERA5_maxT_FWI_2000-2020.csv"))
+era5 <- fread(paste0(idir, "Data/fig1/ERA5_maxT_FWI_2000-2020.csv"))
 
 # trend detection
 mk.test(era5$fwi)
@@ -181,9 +181,9 @@ p_fr <- ggplot(era5) +
 ```
 
 ```{r}
-fig5 <- p_fr + p_f + p_lu + plot_layout(nrow = 1)
+fig1 <- p_fr + p_f + p_lu + plot_layout(nrow = 1)
 odir <- paste0(idir, "Figure")
-ggsave(plot = fig5,
+ggsave(plot = fig1,
        filename = "fig1_static.pdf",
        device = "pdf", path = odir,
        width = 180, height = 70, units = "mm",

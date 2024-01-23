@@ -12,25 +12,15 @@ knitr::opts_chunk$set(echo = TRUE)
 # fig4. WUI change driver's spatial pattern, color shows the partion of urban driver and wildland driver, besides percentage of WUI change
 ## packages and paths
 ```{r}
-# remotes::install_github("arielfri/buffr")
-library(raster)
-library(dplyr)
-library(data.table)
-library(tidyverse)
-library(classInt)
-library(patchwork)
-library(ggplot2)
-library(scales)
-library(cowplot)
-library(ggsci)
-library(spData)
-library(exactextractr)
-library(sf)
-library(ggnewscale)
-library(data.table)
+if (!require("pacman")){
+  install.packages("pacman")
+}
+require(pacman)
+pacman::p_load(raster, sf, ggplot2, dplyr, ggnewscale, ggrepel, patchwork, scales)
+
 raster::rasterOptions(tmpdir = '/project/public/')
 
-idir <- "/project/public/temp_yx/"
+idir <- "~/wildfire/WUI/GlobalWUI/"
 odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
 wgs84 <- CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 
@@ -299,12 +289,11 @@ bivariate.map <- function(rasterx, rastery, colourmatrix = col.matrix,
 ### generate bivirate data
 ```{r}
 # read files
-files <- dir(path = odir, pattern = glob2rx('*00_20_0.1*.tif'))
-# files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
+files <- dir(path = paste0(idir, 'Data/fig4'), pattern = glob2rx('*00_20_0.1*.tif'), full.names = T)
 
 r <- NULL
 for(i in 1:length(files)){
-  r[[i]] <- raster(paste0(odir, files[i]))
+  r[[i]] <- raster(files[i])
 }
 r <- stack(r)
 
@@ -427,18 +416,19 @@ bivMapDF <- melt(bivMapDF, id.vars = c("x", "y"),
                   measure.vars = "BivValue",
                   value.name = "bivVal",
                   variable.name = "Variable")
-saveRDS(bivMapDF, paste0(odir, 'bivMapDF_00-20.rds'))
-bivMapDF <- readRDS(paste0(odir, 'bivMapDF_00-20.rds'))
+saveRDS(bivMapDF, paste0(idir, 'Data/fig4/bivMapDF_00-20.rds'))
 
 ```
 ### ocean bottom data
 ```{r}
 # read original data
-odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
+odir <- "~/wildfire/WUI/GlobalWUI/Data/fig3/"
 delta <- raster(paste0(odir, "delta_20-00.tif"))
 delta <- aggregate(delta, fact = c(10, 10))
+
 wd <- "~/wildfire/WUI/data/00_spatial/Blue-Earth-Bathymetry/"
-bath <- raster(paste0(wd, "Blue-Earth-Bathymetry.tif"))
+
+bath <- readRDS(paste0(idir, "Data/ocean_bottom.rds"))
 
 # crop and resample data to align main result
 bath2 <- crop(bath, delta)
@@ -450,9 +440,9 @@ bath3[bath3 > 0] <- NA
 # get dataframe
 df_b <- as.data.frame(bath3, xy = T)
 ```
-### drawing
+### main plot
 ```{r}
-
+bivMapDF <- readRDS(paste0(idir, 'Data/fig4/bivMapDF_00-20.rds'))
 # Make the map using ggplot
 world <- filter(spData::world, region_un!="Antarctica")
 world <- st_transform(world, crs = crs(r[[1]]))
@@ -462,11 +452,6 @@ map <- ggplot() +
   geom_raster(data = bivMapDF, aes(x = x, y = y, fill = as.character(bivVal))) +
   scale_x_continuous(expand=c(0,0)) +
   scale_y_continuous(expand=c(0,0),limits = c(-61,86)) +
-  # scale_y_continuous(breaks = seq(-50, 75, by = 30),
-  #                    labels = paste0(seq(-50, 75, 30), "°")) +
-  # scale_x_continuous(breaks = seq(-180, 180, 60),
-  #                    labels = paste0(seq(-180, 180, 60), "°")) +
-  # scale_fill_gradientn(colours = col.matrixL, na.value = "transparent") + 
   scale_fill_manual(name = "",
                     values = colL,
                     labels = "",
@@ -477,11 +462,8 @@ map <- ggplot() +
   geom_sf(data = world, fill = NA, lwd = 0.2, color = "#bdbdbd") +
   theme_classic() +
   theme(text = element_text(size = 10, colour = "black")) +
-  # coord_quickmap(expand = FALSE, xlim = extent(r)[1:2], ylim = extent(r)[3:4]) +
+
   theme(legend.position = "none",
-        # plot.background = element_rect(color = "#add8e7", fill ="#add8e7"),
-        # plot.background = element_rect(fill ="#2E2C2C", colour = "#2E2C2C"),
-        # panel.background = element_rect(color = "#add8e7", fill ="#add8e7"),
         axis.text.x  = element_blank(),
         axis.text.y  = element_blank(),
         axis.line = element_blank(),
@@ -491,7 +473,6 @@ map <- ggplot() +
 
 
 driver <- map +
-    # ggtitle("Driver of lost WUI") +
     theme(plot.title = element_text(hjust = 0.5, size = 14),plot.margin = grid::unit(c(0, 0, 0, 0), "in")) +
     inset_element(
         BivLegend,
@@ -506,7 +487,7 @@ driver <- map +
 
 ### save result
 ```{r}
-odir <- "~/wildfire/WUI/data/02_analysis/1127"
+odir <-paste0(idir, "Figure")
 ggsave(plot = driver,
        filename = "fig4_2020-00_driver.pdf",
        device = "pdf", path = odir,
@@ -516,8 +497,8 @@ ggsave(plot = driver,
 
 ## read 1km WUI
 ```{r}
-wd <- "~/wildfire/WUI/data/01_GlobeLand30/1km/"
-files <- dir(path = wd, pattern = glob2rx('*1km.tif'))
+wd <- paste0(idir, 'Data/')
+files <- dir(path = wd, pattern = glob2rx('*rmNA_*.tif'))
 rList <- NULL
 WUI_area <- NULL
 for(i in 1:length(files)){
@@ -593,7 +574,7 @@ p <- ggplot(data = dt) +
     labs(x = expression(Delta ~ 'urban (%)'), y = expression(Delta ~ 'wildland (%)'), fill = '') +
     coord_fixed(ratio = 1)
 
-odir <- "~/wildfire/WUI/data/02_analysis/1127"
+odir <-paste0(idir, "Figure")
 ggsave(plot = p,
        filename = "fig3_distribution.pdf",
        device = "pdf", path = odir,
@@ -603,19 +584,18 @@ ggsave(plot = p,
 
 ## statitic graph
 ```{r}
-odir <- "~/wildfire/WUI/data/01_GlobeLand30/delta/"
-# read files
-files <- dir(path = odir, pattern = glob2rx('*00_10_0.1*.tif'))
-# files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
+files <- dir(path = paste0(idir, 'Data/fig4'), pattern = glob2rx('*00_10_0.1*.tif'), full.names = T)
+
 r <- NULL
 for(i in 1:length(files)){
-  r[[i]] <- raster(paste0(odir, files[i]))
+  r[[i]] <- raster(files[i])
 }
+
 # read files
-files <- dir(path = odir, pattern = glob2rx('*10_20_0.1*.tif'))
+files <- dir(path = paste0(idir, 'Data/fig4'), pattern = glob2rx('*10_20_0.1*.tif'), full.names = T)
 # files <- grep(x = files, pattern = glob2rx('*0.1*.tif'), invert = TRUE, value = TRUE)
 for(i in 1:length(files)){
-  r[[i+2]] <- raster(paste0(odir, files[i]))
+  r[[i+2]] <- raster(files[i])
 }
 
 # u: urban, w:wildland, i:increased d:decreased 10:00-10 20:10-20
@@ -641,17 +621,9 @@ wd_20[wd_20 > 0] <- NA
 static_20 <- stack(ui_20, ud_20, wi_20, wd_20)
 names(static_20) <- c("urban_increased", "urban_decreased", "wildland_increased", "wildland_decreased")
 
-odir <- "~/wildfire/WUI/data/00_spatial/"
-region <- rgdal::readOGR(paste0(odir, "basisRegion_union.shp")) %>%
-  sf::st_as_sf()
-
 mypal <- c("#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#f7bc48", "#93d2f7", "#c1ec9b", "#e3abf6", "#5b5a5a", "#5b5a5a", "#5b5a5a", rgb(0,0,0,0))
-show_col(mypal)
 names(mypal) <- as.character(c(1:8, 11:9, -999))
-```  
 
-### global plots
-```{r}
 t <- NULL
 cellArea <- raster::area(static_10[[1]])
 for(i in 1:4){
@@ -672,7 +644,7 @@ for(i in 5:8){
 }
 names(t) <- c('data', 'driver', 'type', 'year')
 t$data <- as.double(t$data)
-base <- read.csv("~/wildfire/WUI/data/01_GlobeLand30/analysis/WUI_area.csv")
+base <- read.csv(paste0(idir, "Data/fig4/WUI_area.csv"))
 t[9,] <- c(base[1,2:3],'delta', 2000)
 t[1:4, 2] <- c('urban+', 'urban-', 'wildland+', 'wildland-')
 t[5:8, 2] <- c('urban+', 'urban-', 'wildland+', 'wildland-')
@@ -811,170 +783,10 @@ p_abs <- ggplot() +
                 colour = "#EC7014" # Also accepts "red", "blue' etc
   )
 
-odir <- "~/wildfire/WUI/data/02_analysis/1127"
+odir <- paste0(idir, "Figure")
 ggsave(plot = p_abs,
-       filename = "fig3_abs_change.pdf",
+       filename = "fig4_abs_change.pdf",
        device = "pdf", path = odir,
        width = 4, height = 4, units = "in",
-       dpi = 320)
-```
-
-### regional plots
-```{r}
-p_region <- ggplot(region) + 
-  geom_sf(aes(fill = Acronyms)) + 
-  geom_sf_label(aes(label = Acronyms)) + 
-  # scale_fill_discrete(palette = 5) +
-  theme_classic() +
-  theme(legend.position = "none",
-        axis.title = element_blank(),
-        axis.text = element_blank(),
-        axis.line.x = element_blank(),
-        axis.ticks = element_blank())
-odir <- "~/wildfire/WUI/data/02_analysis/1007/hetorogeneous/"
-ggsave(plot = p_region,
-       filename = "SI_region.pdf",
-       device = "pdf", path = odir,
-       width = 15, height = 10, units = "in",
-       dpi = 320)
-# abs change
-cellArea <- raster::area(rList[[1]])
-area <- rList[[1]] * cellArea
-cellArea <- raster::area(static_10[[1]])
-delta_10 <- cellArea * static_10
-cellArea <- raster::area(static_20[[1]])
-delta_20 <- cellArea * static_20
-df_10 <- exact_extract(delta_10, region, fun = 'sum') %>%
-  cbind(REGION = region$region)
-names(df_10) <- c('u+_10', 'u-_10', 'w+_10', 'w-_10', 'REGION')
-df_20 <- exact_extract(delta_20, region, fun = 'sum') %>%
-  cbind(REGION = region$region)
-names(df_20) <- c('u+_20', 'u-_20', 'w+_20', 'w-_20', 'REGION')
-df_base <- exact_extract(area, region, fun = 'sum') %>%
-  cbind(REGION = region$region) %>%
-  as.data.frame() %>%
-  mutate(id = row_number())
-names(df_base) <- c('2000', 'REGION', 'id')
-df_base[,1] <- as.double(df_base[,1])
-df_origin <- left_join(df_base, df_10, by = 'REGION') %>%
-  left_join(df_20, by = 'REGION')
-df_origin[,1] <- as.double(df_origin[,1])
-df_origin$v2010 <- apply(df_origin[,c(1,4:7)],1,sum)
-df_origin$v2020 <- apply(df_origin[,c(1,8:11)],1,sum)
-odir <- "~/wildfire/WUI/data/02_analysis/static/"
-fwrite(df_origin, paste0(odir, "driver.csv"))
-
-df_origin <- fread(paste0(odir, "driver.csv"))
-pList <- NULL
-for(k in 1:14){
-  d <- NULL
-  d$data <- unlist(df_origin[k,c(4:11,1)])
-  d$driver <- c(t$driver[1:8],'2000')
-  d$year <- c(t$year[1:8],2000)
-  d <- bind_cols(d) %>%
-    mutate(type = 'delta') %>%
-    as.data.frame()
-  d <- d[,c(1,2,4,3)]
-  
-  # calculate 2000-2010 base
-  d2 <- d[9,]
-  # urban+
-  d2[1,] <- c(df_origin[k,1], 'urban+', 'base', 2010)
-  # urban-
-  d2[2,] <- c(sum(d[1:2,1]) + d[9,1], 'urban-', 'base', 2010)
-  # wildland+
-  d2[3,] <- c(sum(d[1:2,1]) + d[9,1], 'wildland+', 'base', 2010)
-  # wildland-
-  d2[4,] <- c(sum(d[1:4,1]) + d[9,1], 'wildland-', 'base', 2010)
-  # 2010 base
-  d2[5,] <- c(sum(d[1:4,1]) + d[9,1], '2010', 'delta', 2010)
-  d2$data <- as.double(d2$data)
-  d2$year <- as.double(d2$year)
-  
-  # calculate 2010-2020 base
-  d3 <- d[9,]
-  # urban+
-  d3[1,] <- c(d2[4,1], 'urban+', 'base', 2020)
-  # urban-
-  d3[2,] <- c(sum(d[5:6,1]) + d2[4,1], 'urban-', 'base', 2020)
-  # wildland+
-  d3[3,] <- c(sum(d[5:6,1]) + d2[4,1], 'wildland+', 'base', 2020)
-  # wildland-
-  d3[4,] <- c(sum(d[5:8,1]) + d2[4,1], 'wildland-', 'base', 2020)
-  # 2010 base
-  d3[5,] <- c(sum(d[5:8,1]) + d2[4,1], '2020', 'delta', 2020)
-  d3$data <- as.double(d3$data)
-  d3$year <- as.double(d3$year)
-  
-  # draw abs change value
-  # prepare data
-  d_abs <- bind_rows(d, d2, d3) %>% 
-    group_by(type) %>% 
-    mutate(dummy = ifelse(type == "delta", as.character(row_number()), "-999"))
-  d_abs$origin <- as.double(d_abs$data)
-  d_abs$data <- as.double(d_abs$data) %>% abs()
-  d_abs$driver <- paste0(d_abs$year, '_', d_abs$driver)
-  d_abs$driver[9]<-'2000'
-  d_abs$driver[14]<-'2010'
-  d_abs$driver[19]<-'2020'
-  
-  # set label
-  po <- d_abs %>%
-    group_by(driver) %>%
-    summarise(y = sum(data)) %>%
-    left_join(d_abs[d_abs$type=='delta',], by = c('driver'='driver'))
-  po$percentage <- 0
-  for(i in 3:6) {
-    po$percentage[i] <- po$data[i] / po$origin[1] * 100
-  }
-  for(i in 8:11) {
-    po$percentage[i] <- po$data[i] / po$origin[2] * 100
-  }
-  po$label <- label_comma(accuracy = 0.01, prefix = ifelse(po$origin > 0, "+", "-"), suffix = "%")(po$percentage)
-  for(i in 9:11){
-    po[po$dummy == as.character(i), ]$label <- as.character(round(po[po$dummy == as.character(i), ]$data))
-  }
-  text <- d_abs[9:19,]
-  text$label<-c("", "urban+", "urban-", "wildland+", "wildland-", "", "urban+", "urban-", "wildland+", "wildland-", "")
-  text$dummy<-c(9,1:4,10,5:8,11)
-  
-  # stack bar
-  pList[[k]] <- ggplot() +
-    geom_bar(data = d_abs, aes(
-      x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")),
-      y = data,
-      fill = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))
-    ),
-    width = 0.8,
-    stat = "identity") + 
-    scale_fill_manual(values = mypal) +
-    geom_text(data = text,
-              aes(x = factor(driver, levels = c("2000", "2010_urban+",  "2010_urban-", "2010_wildland+", "2010_wildland-", "2010",  "2020_urban+",  "2020_urban-", "2020_wildland+", "2020_wildland-", "2020")), 
-                  y = origin, label = label, colour = factor(dummy, levels = c(9, 1:4, 10, 5:8, 11, -999))),
-              size = 1.5, angle=90, position = position_stack(0.82)) +
-    scale_color_manual(values = mypal) +
-    scale_x_discrete(labels = c("2000", " ", " ", " ", " ", "2010", " ", " ", " ", " ", "2020")) +
-    scale_y_continuous(expand = c(0,0), limits = c(0, max(po$y)*1.2), labels = comma) +
-    labs(x = '', y =expression("WUI km" ^ {2}), title = '') + 
-    theme_classic() +
-    theme(
-      legend.position = 'none', 
-      aspect.ratio = 0.5,
-      plot.title = element_text(hjust = 0.5),
-      axis.text = element_text(size = 5),
-      axis.text.x = element_text(size = 5.5),
-      axis.title = element_text(size = 5.5),
-      axis.ticks.x = element_blank(),
-      title = element_text(size = 7)
-    ) +
-    labs(title = region$Acronyms[k])
-}
-si <- plot_grid(plotlist = pList, ncol = 3)
-
-odir <- "~/wildfire/WUI/data/02_analysis/0401/SI"
-ggsave(plot = si,
-       filename = "driverStatic_00-20_regional.pdf",
-       device = "pdf", path = odir,
-       width = 180, height = 200, units = "mm",
        dpi = 320)
 ```
